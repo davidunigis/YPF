@@ -21,7 +21,7 @@
         vehículo hace seek (IdVehiculo, IdEvento >= MinId): un rango minúsculo.
      3. Geocercas de Parada (depósito / última / intermedia): una sola pasada
         por viaje, sin repetir subconsultas MAX(Orden).
-     4. Dibujo IdCondicion=7 con el índice espacial forzado (IX_Geografia) y
+     4. Dibujo IdCondicion=7 por su índice (AutoCreado,IdCondicion,Eliminado) y
         Z_EstacionesDeServicioYPF solo se evalúan si el resultado puede cambiar
         la clasificación.
    ----------------------------------------------------------------------------
@@ -30,8 +30,8 @@
      * Evento.Fecha INT yyyymmdd / Evento.Hora INT hhmmss, guardados en UTC
      * URL del viaje (cloud-test.unigis.com/TCC/...) -> instancia correcta
      * DATEADD(HOUR,-3) -> huso horario de visualización (ART)
-     * INDEX(IX_Geografia) en la CTE Zonas2: si el nombre del índice cambia,
-       quitar el hint (el resto funciona igual, solo más lento)
+     * Hints INDEX(IX_FechaHora) en MinId e INDEX(IX_Dibujo_AutoCreado_IdCondicion_Eliminado)
+       en Zonas2: si un índice cambia de nombre, quitar el hint
    ============================================================================ */
 ;WITH
 /* ----------------------------------------------------------
@@ -47,19 +47,20 @@ Ventana AS (
 /* Menor IdEvento con fecha/hora dentro de la ventana. Solo toca ~30 min de
    eventos (seek por IX_FechaHora). Dos ramas para que cada una sea un seek
    limpio y soporte el cruce de medianoche.
-   IMPORTANTE: las expresiones con GETUTCDATE() van INLINE (no via un JOIN a
-   la CTE Ventana): con el JOIN el optimizador hacia un Clustered Index Scan de
-   Evento (608 mil lecturas, 14 s); inline es un Index Seek (~255 lecturas). */
+   IMPORTANTE: MIN(IdEvento) sin hint se convertia en un TOP 1 sobre el indice
+   clustered PK62 (recorre la tabla desde IdEvento=1 hasta hallar una fila
+   de hoy: 608 mil lecturas, 7-14 s). Con INDEX(IX_FechaHora) es un seek de
+   ~255 lecturas. */
 MinId AS (
     SELECT MIN(X.Id) AS Id
     FROM (
         SELECT MIN(E.IdEvento) AS Id
-        FROM Evento E WITH (NOLOCK)
+        FROM Evento E WITH (NOLOCK, INDEX(IX_FechaHora))
         WHERE E.Fecha = CAST(CONVERT(CHAR(8), DATEADD(MINUTE, -30, GETUTCDATE()), 112) AS INT)
           AND E.Hora >= CAST(REPLACE(CONVERT(CHAR(8), DATEADD(MINUTE, -30, GETUTCDATE()), 108), ':', '') AS INT)
         UNION ALL
         SELECT MIN(E.IdEvento)
-        FROM Evento E WITH (NOLOCK)
+        FROM Evento E WITH (NOLOCK, INDEX(IX_FechaHora))
         WHERE E.Fecha >  CAST(CONVERT(CHAR(8), DATEADD(MINUTE, -30, GETUTCDATE()), 112) AS INT)
           AND E.Fecha <= CAST(CONVERT(CHAR(8), GETUTCDATE(), 112) AS INT)
     ) X
@@ -174,11 +175,13 @@ Zonas2 AS (
     FROM Zonas Z
     OUTER APPLY (
         SELECT TOP 1 1 AS Hit
-        FROM Dibujo D WITH (NOLOCK, INDEX(IX_Geografia))
+        /* Dibujo tiene ~49 M de filas y solo ~10 con IdCondicion = 7: se busca
+           por el indice (AutoCreado, IdCondicion, Eliminado) -AutoCreado es bit NOT NULL,
+           por eso IN (0,1) habilita el seek- y recien ahi se prueba la geometria. */
+        FROM Dibujo D WITH (NOLOCK, INDEX(IX_Dibujo_AutoCreado_IdCondicion_Eliminado))
         WHERE Z.HasGps = 1 AND Z.IdEstadoViaje = 90
           AND NOT (Z.EnUltimaParada = 0 AND Z.EnParadaIntermedia = 1 AND Z.NumEntregas > 1)
-          AND D.IdCondicion = 7 AND D.Eliminado = 0
-          AND D.Geografia.Filter(Z.Punto) = 1
+          AND D.AutoCreado IN (0, 1) AND D.IdCondicion = 7 AND D.Eliminado = 0
           AND D.Geografia.STIntersects(Z.Punto) = 1
     ) C7
     OUTER APPLY (
