@@ -500,6 +500,10 @@ N'</div>
 
 <script>
 (function(){
+  var REFRESH_MS=60000;   /* intervalo de actualizacion (ms) */
+  /* al re-renderizarse el widget, liberar timers/listeners de la instancia anterior */
+  if(window.__umOff){ try{ window.__umOff(); }catch(e){} }
+
   function fix(){
     var el=document.getElementById("um"); if(!el)return;
     var p=el.parentElement,s=0;
@@ -514,11 +518,18 @@ N'</div>
     }
   }
   fix();setTimeout(fix,200);setTimeout(fix,600);setTimeout(fix,1500);
-  if(window.ResizeObserver)new ResizeObserver(fix).observe(document.getElementById("um"));
+  var um=document.getElementById("um");
+  if(window.ResizeObserver)new ResizeObserver(fix).observe(um);
 
-  var cur="all";
+  /* estado que sobrevive a las actualizaciones (filtro, busqueda, secciones, pantalla completa) */
+  var S=window.__umS||(window.__umS={cur:"all",q:"",col:{},fs:false});
+  var cur=S.cur;
+  function nm(s){ return s.querySelector(".tsec-name").textContent; }
+
   window.umApply=function(){
-    var q=(document.getElementById("um-q").value||"").toUpperCase().trim();
+    var qi=document.getElementById("um-q");
+    var q=(qi.value||"").toUpperCase().trim();
+    S.cur=cur; S.q=qi.value||"";
     var vis=0;
     var rows=document.querySelectorAll("#um-secs tbody tr");
     for(var i=0;i<rows.length;i++){
@@ -543,40 +554,72 @@ N'</div>
     ch.className+=" on";
     umAll(false); umApply();
   };
-  window.umTog=function(h){ var s=h.parentElement; s.className=(s.className.indexOf(" col")>-1)?s.className.replace(" col",""):s.className+" col"; };
+  window.umTog=function(h){
+    var s=h.parentElement;
+    s.className=(s.className.indexOf(" col")>-1)?s.className.replace(" col",""):s.className+" col";
+    S.col[nm(s)]=(s.className.indexOf(" col")>-1);
+  };
   window.umAll=function(col){
     var secs=document.querySelectorAll("#um-secs .tsec");
-    for(var i=0;i<secs.length;i++){ secs[i].className="tsec"+(col?" col":""); }
+    S.col={};
+    for(var i=0;i<secs.length;i++){ secs[i].className="tsec"+(col?" col":""); if(col)S.col[nm(secs[i])]=true; }
   };
+
+  /* restaurar estado previo */
+  (function(){
+    var cs=document.querySelectorAll("#um .chip");
+    for(var i=0;i<cs.length;i++){
+      cs[i].className=cs[i].className.replace(" on","");
+      if(cs[i].getAttribute("data-k")===cur)cs[i].className+=" on";
+    }
+    document.getElementById("um-q").value=S.q||"";
+    var secs=document.querySelectorAll("#um-secs .tsec");
+    for(var j=0;j<secs.length;j++){ if(S.col[nm(secs[j])])secs[j].className="tsec col"; }
+  })();
   umApply();
 
-  /* ---- Pantalla completa: API nativa; si el portal la bloquea, modo fijo ---- */
-  var um=document.getElementById("um");
-  function fsOn(){ return !!(document.fullscreenElement||document.webkitFullscreenElement)||um.className.indexOf("um-fs")>-1; }
-  function lbl(){ document.getElementById("um-fslbl").textContent=fsOn()?"SALIR":"PANTALLA COMPLETA"; }
+  /* ---- Pantalla completa: overlay fijo + API nativa sobre toda la pagina
+         (sobreviven a la actualizacion del widget) ---- */
+  function fsOn(){ return um.className.indexOf("um-fs")>-1; }
+  function lbl(){ var e=document.getElementById("um-fslbl"); if(e)e.textContent=fsOn()?"SALIR":"PANTALLA COMPLETA"; }
+  function fsSet(on){
+    if(on){ if(!fsOn())um.className+=" um-fs"; document.body.style.overflow="hidden"; }
+    else{ um.className=um.className.replace(" um-fs",""); document.body.style.overflow=""; }
+    S.fs=on; lbl();
+  }
   window.umFs=function(){
     if(fsOn()){
-      if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen();
-      else if(document.webkitFullscreenElement&&document.webkitExitFullscreen)document.webkitExitFullscreen();
-      um.className=um.className.replace(" um-fs","");
-      document.body.style.overflow="";
-      lbl(); return;
+      fsSet(false);
+      if((document.fullscreenElement||document.webkitFullscreenElement)&&document.exitFullscreen){ try{ document.exitFullscreen(); }catch(e){} }
+      return;
     }
-    var req=um.requestFullscreen||um.webkitRequestFullscreen;
-    var p=null;
-    try{ p=req?req.call(um):null; }catch(e){ p=null; }
-    if(p&&p.then){ p.then(lbl).catch(function(){ um.className+=" um-fs"; document.body.style.overflow="hidden"; lbl(); }); }
-    else if(!req){ um.className+=" um-fs"; document.body.style.overflow="hidden"; lbl(); }
-    else{ setTimeout(lbl,150); }
+    fsSet(true);
+    var de=document.documentElement, req=de.requestFullscreen||de.webkitRequestFullscreen;
+    if(req){ try{ var p=req.call(de); if(p&&p.catch)p.catch(function(){}); }catch(e){} }
   };
-  document.addEventListener("fullscreenchange",lbl);
-  document.addEventListener("webkitfullscreenchange",lbl);
-  document.addEventListener("keydown",function(e){
-    if(e.key==="Escape"&&um.className.indexOf("um-fs")>-1){ um.className=um.className.replace(" um-fs",""); document.body.style.overflow=""; lbl(); }
-  });
+  function onFs(){ if(!document.fullscreenElement&&!document.webkitFullscreenElement&&S.fs&&fsOn())fsSet(false); }
+  function onKey(e){ if(e.key==="Escape"&&fsOn())fsSet(false); }
+  document.addEventListener("fullscreenchange",onFs);
+  document.addEventListener("webkitfullscreenchange",onFs);
+  document.addEventListener("keydown",onKey);
+  if(S.fs)fsSet(true); else lbl();
 
-  /* Auto-refresh cada 10 min */
-  setTimeout(function(){ location.reload(); }, 600000);
+  /* ---- Actualizacion automatica: refreshDashboard() del portal (sin recargar la pagina);
+         si no existe, recarga completa. Se omite si la pestana esta oculta. ---- */
+  function tick(){
+    window.__umT=setTimeout(tick,REFRESH_MS);   /* red de seguridad si el re-render falla */
+    if(document.hidden)return;
+    if(typeof window.refreshDashboard==="function"){
+      try{ window.refreshDashboard(); }catch(e){ location.reload(); }
+    }else{ location.reload(); }
+  }
+  window.__umT=setTimeout(tick,REFRESH_MS);
+  window.__umOff=function(){
+    clearTimeout(window.__umT);
+    document.removeEventListener("fullscreenchange",onFs);
+    document.removeEventListener("webkitfullscreenchange",onFs);
+    document.removeEventListener("keydown",onKey);
+  };
 })();
 </script>'
      ELSE N'' END
