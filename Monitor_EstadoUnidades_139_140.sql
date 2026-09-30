@@ -484,7 +484,7 @@ N'<div id="um">
                         + CAST(R.IdViaje AS NVARCHAR(20)) + N'">' + CAST(R.IdViaje AS NVARCHAR(20)) + N'</a>' END + N'</td>'
   + N'<td class="td-dim">' + R.EstadoViajeTxt + N'</td>'
   + N'<td class="td-mono">' + R.UltReporte + N'</td>'
-  + N'<td class="td-mono ' + CASE WHEN R.MinAgo > 30 THEN N'td-late' ELSE N'td-ok' END + N'">' + R.HaceTxt + N'</td>'
+  + N'<td class="td-mono ' + CASE WHEN R.HasGps = 0 THEN N'td-dim' WHEN R.MinAgo > 30 THEN N'td-late' ELSE N'td-ok' END + N'">' + R.HaceTxt + N'</td>'
   + N'<td class="td-mono">' + CASE WHEN R.HasGps = 0 THEN N'-' ELSE CAST(CAST(R.Vel AS INT) AS NVARCHAR(10)) + N' km/h' END + N'</td>'
   + N'<td class="td-dim">' + R.UbicacionTxt + N'</td>'
   + N'</tr>'
