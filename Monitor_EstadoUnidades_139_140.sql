@@ -350,6 +350,8 @@ N'<div id="um">
 #um:fullscreen .fsbtn .ico-x,#um.um-fs .fsbtn .ico-x{display:block}
 #um:fullscreen .fsbtn .ico-fs,#um.um-fs .fsbtn .ico-fs{display:none}
 #um:fullscreen .fsbtn,#um.um-fs .fsbtn{border-color:rgba(248,113,113,.45);color:#fca5a5}
+/* pantalla completa: ocultar cabecera y menu lateral del portal */
+body.um-fsb uni-header,body.um-fsb .uni-header,body.um-fsb .sidebar,body.um-fsb .apps-sidebar{display:none!important}
 /* ICONOS: Material Icons que ya carga el portal (clase material-icons; no se usa Google Fonts) */
 .mi{font-size:18px;line-height:1;vertical-align:middle}
 .um-noi .mi{display:none}
@@ -366,7 +368,7 @@ N'<div id="um">
 .chip:hover{transform:translateY(-2px);background:rgba(30,41,59,.9)}
 .chip.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 12%,rgba(30,41,59,.9));
   box-shadow:0 0 0 1px var(--c),0 6px 20px color-mix(in srgb,var(--c) 25%,transparent)}
-.chip span{font-size:10.5px;letter-spacing:.5px;font-weight:600;color:#94a3b8;text-transform:uppercase;line-height:1.25;white-space:normal}
+.chip span{font-size:10.5px;letter-spacing:.5px;font-weight:600;color:#94a3b8;text-transform:uppercase;line-height:1.25;white-space:normal;padding-right:28px}
 .chip.on span{color:#e2e8f0}
 .chip b{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:600;color:#f8fafc;line-height:1;font-variant-numeric:tabular-nums;
   display:flex;align-items:center;gap:8px}
@@ -440,15 +442,15 @@ N'<div id="um">
 
 <!-- CHIPS / FILTROS -->
 <div class="chips">
-  <div class="chip c-all on" data-k="all" onclick="umFil(this)"><i class="material-icons mi">apps</i><span>Todas</span><b><i></i>' + CAST(R.gTot  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-all on" data-k="all" onclick="umFil(this)"><i class="material-icons mi">dashboard</i><span>Todas</span><b><i></i>' + CAST(R.gTot  AS NVARCHAR(10)) + N'</b></div>
   <div class="chip c-carr" data-k="carr" onclick="umFil(this)"><i class="material-icons mi">local_shipping</i><span>Carreteando</span><b><i></i>' + CAST(R.gCarr AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-det" data-k="det" onclick="umFil(this)"><i class="material-icons mi">pause_circle_filled</i><span>Detenido</span><b><i></i>' + CAST(R.gDet  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-detp" data-k="detp" onclick="umFil(this)"><i class="material-icons mi">pin_drop</i><span>Detenido en Parada</span><b><i></i>' + CAST(R.gDetp AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-det" data-k="det" onclick="umFil(this)"><i class="material-icons mi">local_parking</i><span>Detenido</span><b><i></i>' + CAST(R.gDet  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-detp" data-k="detp" onclick="umFil(this)"><i class="material-icons mi">local_gas_station</i><span>Detenido en Parada</span><b><i></i>' + CAST(R.gDetp AS NVARCHAR(10)) + N'</b></div>
   <div class="chip c-ecar" data-k="ecar" onclick="umFil(this)"><i class="material-icons mi">hourglass_empty</i><span>Espera Carga</span><b><i></i>' + CAST(R.gEcar AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-car" data-k="car" onclick="umFil(this)"><i class="material-icons mi">publish</i><span>Carga</span><b><i></i>' + CAST(R.gCar  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-car" data-k="car" onclick="umFil(this)"><i class="material-icons mi">archive</i><span>Carga</span><b><i></i>' + CAST(R.gCar  AS NVARCHAR(10)) + N'</b></div>
   <div class="chip c-edes" data-k="edes" onclick="umFil(this)"><i class="material-icons mi">hourglass_full</i><span>Espera Descarga</span><b><i></i>' + CAST(R.gEdes AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-des" data-k="des" onclick="umFil(this)"><i class="material-icons mi">get_app</i><span>Descarga</span><b><i></i>' + CAST(R.gDes  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-est" data-k="est" onclick="umFil(this)"><i class="material-icons mi">schedule</i><span>Espera sin Tarea</span><b><i></i>' + CAST(R.gEst  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-des" data-k="des" onclick="umFil(this)"><i class="material-icons mi">unarchive</i><span>Descarga</span><b><i></i>' + CAST(R.gDes  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-est" data-k="est" onclick="umFil(this)"><i class="material-icons mi">event_busy</i><span>Espera sin Tarea</span><b><i></i>' + CAST(R.gEst  AS NVARCHAR(10)) + N'</b></div>
   <div class="chip c-sgps" data-k="sgps" onclick="umFil(this)"><i class="material-icons mi">gps_off</i><span>Sin GPS (30 min)</span><b><i></i>' + CAST(R.gSgps AS NVARCHAR(10)) + N'</b></div>
   <div class="chip c-sinviaje" data-k="sinviaje" onclick="umFil(this)"><i class="material-icons mi">block</i><span>Sin Viaje Activo</span><b><i></i>' + CAST(R.gSinv AS NVARCHAR(10)) + N'</b></div>
   <div class="chip c-otro" data-k="otro" onclick="umFil(this)"><i class="material-icons mi">help_outline</i><span>Fuera de Regla</span><b><i></i>' + CAST(R.gOtro AS NVARCHAR(10)) + N'</b></div>
@@ -532,8 +534,8 @@ N'</div>
   function chkIcons(){
     try{
       var t=document.createElement("span");
-      t.className="material-icons mi";
-      t.style.cssText="position:absolute;visibility:hidden;font-size:24px;";
+      t.className="material-icons";   /* sin la clase mi: .um-noi la ocultaria y la medicion daria 0 */
+      t.style.cssText="position:absolute;visibility:hidden;display:inline-block;font-size:24px;";
       t.textContent="local_shipping";
       um.appendChild(t);
       var w=t.offsetWidth; um.removeChild(t);
@@ -544,8 +546,11 @@ N'</div>
   chkIcons();
   if(document.fonts&&document.fonts.ready)document.fonts.ready.then(chkIcons);
 
-  /* estado que sobrevive a las actualizaciones (filtro, busqueda, secciones, pantalla completa) */
-  var S=window.__umS||(window.__umS={cur:"all",q:"",col:{},fs:false});
+  /* estado que sobrevive a las actualizaciones (filtro, busqueda, secciones, pantalla completa, scroll) */
+  var S=window.__umS||(window.__umS={});
+  if(!S.col)S.col={};
+  if(!S.cur)S.cur="all";
+  if(!S.anc)S.anc=[];
   var cur=S.cur;
   function nm(s){ return s.querySelector(".tsec-name").textContent; }
 
@@ -601,13 +606,33 @@ N'</div>
   })();
   umApply();
 
-  /* ---- Pantalla completa: overlay fijo + API nativa sobre toda la pagina
+  /* ---- Scroll: se guarda antes de actualizar y se restaura despues ---- */
+  function saveScroll(){
+    S.st=um.scrollTop||0;
+    S.sy=window.pageYOffset||document.documentElement.scrollTop||0;
+    S.anc=[]; var p=um.parentElement,d=0;
+    while(p&&d<14){ S.anc.push(p.scrollTop||0); p=p.parentElement; d++; }
+    S.rs=true;
+  }
+  function restoreScroll(){
+    if(!S.rs)return;
+    try{
+      um.scrollTop=S.st||0;
+      var p=um.parentElement,d=0;
+      while(p&&d<14){ if(S.anc[d])p.scrollTop=S.anc[d]; p=p.parentElement; d++; }
+      if(S.sy)window.scrollTo(0,S.sy);
+    }catch(e){}
+  }
+  restoreScroll(); setTimeout(restoreScroll,150); setTimeout(restoreScroll,500); setTimeout(restoreScroll,1200);
+  setTimeout(function(){ S.rs=false; },1600);
+
+  /* ---- Pantalla completa: overlay fijo + API nativa sobre toda la pagina + oculta la cabecera del portal
          (sobreviven a la actualizacion del widget) ---- */
   function fsOn(){ return um.className.indexOf("um-fs")>-1; }
   function lbl(){ var e=document.getElementById("um-fslbl"); if(e)e.textContent=fsOn()?"SALIR":"PANTALLA COMPLETA"; }
   function fsSet(on){
-    if(on){ if(!fsOn())um.className+=" um-fs"; document.body.style.overflow="hidden"; }
-    else{ um.className=um.className.replace(" um-fs",""); document.body.style.overflow=""; }
+    if(on){ if(!fsOn())um.className+=" um-fs"; document.body.style.overflow="hidden"; document.body.classList.add("um-fsb"); }
+    else{ um.className=um.className.replace(" um-fs",""); document.body.style.overflow=""; document.body.classList.remove("um-fsb"); }
     S.fs=on; lbl();
   }
   window.umFs=function(){
@@ -627,13 +652,49 @@ N'</div>
   document.addEventListener("keydown",onKey);
   if(S.fs)fsSet(true); else lbl();
 
+  /* ---- Instantanea: mientras el portal redibuja el dashboard se muestra una copia del
+         reporte por encima, para que no se vea el hueco, el spinner ni el fondo blanco ---- */
+  function rmSnap(){
+    clearTimeout(window.__umSnapT);
+    var s=document.getElementById("um-snap");
+    if(s&&s.parentNode)s.parentNode.removeChild(s);
+  }
+  function snap(){
+    try{
+      rmSnap();
+      var r=um.getBoundingClientRect();
+      var c=um.cloneNode(true);
+      /* se conserva el bloque style: el del widget original desaparece cuando el portal lo redibuja */
+      var b=c.querySelectorAll("script");
+      for(var i=0;i<b.length;i++)b[i].parentNode.removeChild(b[i]);
+      var w=document.createElement("div");
+      w.id="um-snap";
+      w.style.cssText="position:fixed;z-index:2147483001;pointer-events:none;overflow:hidden;left:"+r.left+"px;top:"+r.top+"px;width:"+r.width+"px;height:"+r.height+"px;";
+      w.appendChild(c);
+      document.body.appendChild(w);
+      c.scrollTop=S.st||0;
+      window.__umSnapT=setTimeout(rmSnap,20000);   /* red de seguridad */
+    }catch(e){}
+  }
+  /* si esta instancia nace con una copia pendiente, retirarla cuando el reporte nuevo ya sea visible */
+  (function(){
+    var n=0;
+    function chk(){
+      n++;
+      if(um.offsetWidth>0&&um.offsetHeight>50){ setTimeout(rmSnap,250); return; }
+      if(n<100)setTimeout(chk,100); else rmSnap();
+    }
+    if(document.getElementById("um-snap"))chk();
+  })();
+
   /* ---- Actualizacion automatica: refreshDashboard() del portal (sin recargar la pagina);
          si no existe, recarga completa. Se omite si la pestana esta oculta. ---- */
   function tick(){
     window.__umT=setTimeout(tick,REFRESH_MS);   /* red de seguridad si el re-render falla */
     if(document.hidden)return;
     if(typeof window.refreshDashboard==="function"){
-      try{ window.refreshDashboard(); }catch(e){ location.reload(); }
+      saveScroll(); snap();
+      try{ window.refreshDashboard(); }catch(e){ rmSnap(); location.reload(); }
     }else{ location.reload(); }
   }
   window.__umT=setTimeout(tick,REFRESH_MS);
