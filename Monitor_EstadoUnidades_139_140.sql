@@ -46,19 +46,22 @@ Ventana AS (
 
 /* Menor IdEvento con fecha/hora dentro de la ventana. Solo toca ~30 min de
    eventos (seek por IX_FechaHora). Dos ramas para que cada una sea un seek
-   limpio y soporte el cruce de medianoche. */
+   limpio y soporte el cruce de medianoche.
+   IMPORTANTE: las expresiones con GETUTCDATE() van INLINE (no via un JOIN a
+   la CTE Ventana): con el JOIN el optimizador hacia un Clustered Index Scan de
+   Evento (608 mil lecturas, 14 s); inline es un Index Seek (~255 lecturas). */
 MinId AS (
     SELECT MIN(X.Id) AS Id
     FROM (
         SELECT MIN(E.IdEvento) AS Id
         FROM Evento E WITH (NOLOCK)
-        CROSS JOIN Ventana W
-        WHERE E.Fecha = W.FDesde AND E.Hora >= W.HDesde
+        WHERE E.Fecha = CAST(CONVERT(CHAR(8), DATEADD(MINUTE, -30, GETUTCDATE()), 112) AS INT)
+          AND E.Hora >= CAST(REPLACE(CONVERT(CHAR(8), DATEADD(MINUTE, -30, GETUTCDATE()), 108), ':', '') AS INT)
         UNION ALL
         SELECT MIN(E.IdEvento)
         FROM Evento E WITH (NOLOCK)
-        CROSS JOIN Ventana W
-        WHERE E.Fecha > W.FDesde AND E.Fecha <= W.FHasta
+        WHERE E.Fecha >  CAST(CONVERT(CHAR(8), DATEADD(MINUTE, -30, GETUTCDATE()), 112) AS INT)
+          AND E.Fecha <= CAST(CONVERT(CHAR(8), GETUTCDATE(), 112) AS INT)
     ) X
 ),
 
