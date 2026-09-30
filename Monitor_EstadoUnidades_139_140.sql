@@ -350,6 +350,13 @@ N'<div id="um">
 #um:fullscreen .fsbtn .ico-x,#um.um-fs .fsbtn .ico-x{display:block}
 #um:fullscreen .fsbtn .ico-fs,#um.um-fs .fsbtn .ico-fs{display:none}
 #um:fullscreen .fsbtn,#um.um-fs .fsbtn{border-color:rgba(248,113,113,.45);color:#fca5a5}
+/* ICONOS: Material Icons que ya carga el portal (clase material-icons; no se usa Google Fonts) */
+.mi{font-size:18px;line-height:1;vertical-align:middle}
+.um-noi .mi{display:none}
+.mi-t{font-size:28px;vertical-align:-6px;margin-right:9px;color:#38bdf8}
+.chip .mi{position:absolute;right:11px;top:10px;font-size:20px;color:var(--c);opacity:.9}
+.tbtn{display:inline-flex;align-items:center;gap:6px}
+.tbtn .mi{font-size:16px}
 /* CHIPS DE ESTADO (filtros) */
 .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;margin-bottom:16px}
 .chip{cursor:pointer;padding:12px 14px 12px 16px;border-radius:12px;border:1px solid rgba(148,163,184,.14);background:rgba(30,41,59,.55);
@@ -415,7 +422,7 @@ N'<div id="um">
 
 <!-- HEADER -->
 <div class="um-h">
-  <div class="um-t">Estado de Unidades<small>Operaciones 139 &middot; 140 &nbsp;|&nbsp; GPS &uacute;ltimos 30 min &nbsp;|&nbsp; Actualizado ' + CONVERT(NVARCHAR(16), DATEADD(HOUR,-3,GETUTCDATE()), 120) + N'</small></div>
+  <div class="um-t"><i class="material-icons mi mi-t">local_shipping</i>Estado de Unidades<small>Operaciones 139 &middot; 140 &nbsp;|&nbsp; GPS &uacute;ltimos 30 min &nbsp;|&nbsp; Actualizado ' + CONVERT(NVARCHAR(16), DATEADD(HOUR,-3,GETUTCDATE()), 120) + N'</small></div>
   <div class="um-right">
     <div class="um-kpis">
       <div class="kpi"><b>' + CAST(R.gTot    AS NVARCHAR(10)) + N'</b><span>Unidades</span></div>
@@ -433,25 +440,25 @@ N'<div id="um">
 
 <!-- CHIPS / FILTROS -->
 <div class="chips">
-  <div class="chip c-all on" data-k="all" onclick="umFil(this)"><span>Todas</span><b><i></i>' + CAST(R.gTot  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-carr" data-k="carr" onclick="umFil(this)"><span>Carreteando</span><b><i></i>' + CAST(R.gCarr AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-det" data-k="det" onclick="umFil(this)"><span>Detenido</span><b><i></i>' + CAST(R.gDet  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-detp" data-k="detp" onclick="umFil(this)"><span>Detenido en Parada</span><b><i></i>' + CAST(R.gDetp AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-ecar" data-k="ecar" onclick="umFil(this)"><span>Espera Carga</span><b><i></i>' + CAST(R.gEcar AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-car" data-k="car" onclick="umFil(this)"><span>Carga</span><b><i></i>' + CAST(R.gCar  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-edes" data-k="edes" onclick="umFil(this)"><span>Espera Descarga</span><b><i></i>' + CAST(R.gEdes AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-des" data-k="des" onclick="umFil(this)"><span>Descarga</span><b><i></i>' + CAST(R.gDes  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-est" data-k="est" onclick="umFil(this)"><span>Espera sin Tarea</span><b><i></i>' + CAST(R.gEst  AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-sgps" data-k="sgps" onclick="umFil(this)"><span>Sin GPS (30 min)</span><b><i></i>' + CAST(R.gSgps AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-sinviaje" data-k="sinviaje" onclick="umFil(this)"><span>Sin Viaje Activo</span><b><i></i>' + CAST(R.gSinv AS NVARCHAR(10)) + N'</b></div>
-  <div class="chip c-otro" data-k="otro" onclick="umFil(this)"><span>Fuera de Regla</span><b><i></i>' + CAST(R.gOtro AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-all on" data-k="all" onclick="umFil(this)"><i class="material-icons mi">apps</i><span>Todas</span><b><i></i>' + CAST(R.gTot  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-carr" data-k="carr" onclick="umFil(this)"><i class="material-icons mi">local_shipping</i><span>Carreteando</span><b><i></i>' + CAST(R.gCarr AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-det" data-k="det" onclick="umFil(this)"><i class="material-icons mi">pause_circle_filled</i><span>Detenido</span><b><i></i>' + CAST(R.gDet  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-detp" data-k="detp" onclick="umFil(this)"><i class="material-icons mi">pin_drop</i><span>Detenido en Parada</span><b><i></i>' + CAST(R.gDetp AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-ecar" data-k="ecar" onclick="umFil(this)"><i class="material-icons mi">hourglass_empty</i><span>Espera Carga</span><b><i></i>' + CAST(R.gEcar AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-car" data-k="car" onclick="umFil(this)"><i class="material-icons mi">publish</i><span>Carga</span><b><i></i>' + CAST(R.gCar  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-edes" data-k="edes" onclick="umFil(this)"><i class="material-icons mi">hourglass_full</i><span>Espera Descarga</span><b><i></i>' + CAST(R.gEdes AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-des" data-k="des" onclick="umFil(this)"><i class="material-icons mi">get_app</i><span>Descarga</span><b><i></i>' + CAST(R.gDes  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-est" data-k="est" onclick="umFil(this)"><i class="material-icons mi">schedule</i><span>Espera sin Tarea</span><b><i></i>' + CAST(R.gEst  AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-sgps" data-k="sgps" onclick="umFil(this)"><i class="material-icons mi">gps_off</i><span>Sin GPS (30 min)</span><b><i></i>' + CAST(R.gSgps AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-sinviaje" data-k="sinviaje" onclick="umFil(this)"><i class="material-icons mi">block</i><span>Sin Viaje Activo</span><b><i></i>' + CAST(R.gSinv AS NVARCHAR(10)) + N'</b></div>
+  <div class="chip c-otro" data-k="otro" onclick="umFil(this)"><i class="material-icons mi">help_outline</i><span>Fuera de Regla</span><b><i></i>' + CAST(R.gOtro AS NVARCHAR(10)) + N'</b></div>
 </div>
 
 <!-- HERRAMIENTAS -->
 <div class="tools">
   <input class="srch" id="um-q" placeholder="Buscar placa" oninput="umApply()">
-  <button class="tbtn" onclick="umAll(false)">EXPANDIR</button>
-  <button class="tbtn" onclick="umAll(true)">COLAPSAR</button>
+  <button class="tbtn" onclick="umAll(false)"><i class="material-icons mi">unfold_more</i>EXPANDIR</button>
+  <button class="tbtn" onclick="umAll(true)"><i class="material-icons mi">unfold_less</i>COLAPSAR</button>
   <span class="vis" id="um-vis"></span>
 </div>
 
@@ -520,6 +527,22 @@ N'</div>
   fix();setTimeout(fix,200);setTimeout(fix,600);setTimeout(fix,1500);
   var um=document.getElementById("um");
   if(window.ResizeObserver)new ResizeObserver(fix).observe(um);
+
+  /* si el portal no tiene cargada la fuente de iconos, ocultarlos (evita ver el texto local_shipping) */
+  function chkIcons(){
+    try{
+      var t=document.createElement("span");
+      t.className="material-icons mi";
+      t.style.cssText="position:absolute;visibility:hidden;font-size:24px;";
+      t.textContent="local_shipping";
+      um.appendChild(t);
+      var w=t.offsetWidth; um.removeChild(t);
+      if(w>60){ if(um.className.indexOf(" um-noi")<0)um.className+=" um-noi"; }
+      else um.className=um.className.replace(" um-noi","");
+    }catch(e){}
+  }
+  chkIcons();
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(chkIcons);
 
   /* estado que sobrevive a las actualizaciones (filtro, busqueda, secciones, pantalla completa) */
   var S=window.__umS||(window.__umS={cur:"all",q:"",col:{},fs:false});
