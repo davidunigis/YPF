@@ -312,9 +312,9 @@ SELECT ISNULL(
   + CASE WHEN R.gOrd = 1 THEN
 N'<div id="um">
 <style>
-@import url(https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap);
+/* Tipografias del sistema: el portal bloquea Google Fonts (CSP style-src) */
 .uni_cont_all{width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;overflow:visible!important;}
-#um{width:100%;padding:22px 24px;box-sizing:border-box;font-family:"Inter",sans-serif;color:#e2e8f0;
+#um{width:100%;padding:22px 24px;box-sizing:border-box;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;
   background:radial-gradient(1200px 500px at 10% -10%,rgba(56,189,248,.10),transparent 60%),
              radial-gradient(900px 400px at 100% 0%,rgba(167,139,250,.08),transparent 60%),#0b1220;
   border-radius:16px;border:1px solid rgba(148,163,184,.12);position:relative;overflow:hidden;
@@ -328,14 +328,14 @@ N'<div id="um">
 /* HEADER */
 .um-h{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:16px;margin-bottom:16px;
   border-bottom:1px solid rgba(148,163,184,.12);flex-wrap:wrap}
-.um-t{font-family:"Outfit",sans-serif;font-size:21px;font-weight:700;color:#f8fafc;letter-spacing:.2px}
-.um-t small{display:block;font-family:"Inter",sans-serif;font-size:11px;letter-spacing:.8px;color:#64748b;font-weight:500;margin-top:5px;text-transform:uppercase}
+.um-t{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:21px;font-weight:700;color:#f8fafc;letter-spacing:.2px}
+.um-t small{display:block;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:.8px;color:#64748b;font-weight:500;margin-top:5px;text-transform:uppercase}
 .um-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .um-kpis{display:flex;gap:10px;flex-wrap:wrap}
 .kpi{padding:9px 18px;border-radius:12px;background:rgba(30,41,59,.65);border:1px solid rgba(148,163,184,.14);
   display:flex;flex-direction:column;align-items:center;min-width:96px;position:relative;overflow:hidden}
 .kpi::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--c,#38bdf8);opacity:.8}
-.kpi b{font-family:"Outfit",sans-serif;font-size:24px;font-weight:600;line-height:1;color:#f8fafc;font-variant-numeric:tabular-nums}
+.kpi b{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:600;line-height:1;color:#f8fafc;font-variant-numeric:tabular-nums}
 .kpi span{font-size:10px;letter-spacing:.9px;color:#64748b;font-weight:500;margin-top:5px;text-transform:uppercase}
 .live{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:600;letter-spacing:1.4px;color:#38bdf8;
   padding:8px 14px;border-radius:10px;border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.08)}
@@ -343,7 +343,7 @@ N'<div id="um">
 @keyframes umblink{0%,100%{opacity:1}50%{opacity:.15}}
 .fsbtn{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;cursor:pointer;
   border:1px solid rgba(148,163,184,.2);background:rgba(30,41,59,.75);color:#e2e8f0;
-  font-family:"Inter",sans-serif;font-size:11px;font-weight:600;letter-spacing:.6px;transition:background .15s,border-color .15s}
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:.6px;transition:background .15s,border-color .15s}
 .fsbtn:hover{background:#1e293b;border-color:#38bdf8}
 .fsbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fsbtn .ico-x{display:none}
@@ -361,19 +361,19 @@ N'<div id="um">
   box-shadow:0 0 0 1px var(--c),0 6px 20px color-mix(in srgb,var(--c) 25%,transparent)}
 .chip span{font-size:10.5px;letter-spacing:.5px;font-weight:600;color:#94a3b8;text-transform:uppercase;line-height:1.25;white-space:normal}
 .chip.on span{color:#e2e8f0}
-.chip b{font-family:"Outfit",sans-serif;font-size:24px;font-weight:600;color:#f8fafc;line-height:1;font-variant-numeric:tabular-nums;
+.chip b{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:600;color:#f8fafc;line-height:1;font-variant-numeric:tabular-nums;
   display:flex;align-items:center;gap:8px}
 .chip b i{width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);flex-shrink:0}
 /* BARRA DE HERRAMIENTAS */
 .tools{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .srch{flex:1;min-width:220px;padding:10px 14px 10px 38px;border-radius:10px;border:1px solid rgba(148,163,184,.18);background:#111a2c;color:#f1f5f9;
-  font-family:"Inter",sans-serif;font-size:13px;outline:none;
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:13px;outline:none;
   background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%2364748b%27 stroke-width=%272%27 stroke-linecap=%27round%27%3E%3Ccircle cx=%2711%27 cy=%2711%27 r=%278%27/%3E%3Cpath d=%27m21 21-4.3-4.3%27/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:12px center;background-size:16px}
 .srch::placeholder{color:#64748b}
 .srch:focus{border-color:#38bdf8;box-shadow:0 0 0 3px rgba(56,189,248,.15)}
 .tbtn{padding:10px 14px;border-radius:10px;border:1px solid rgba(148,163,184,.18);background:#111a2c;color:#cbd5e1;cursor:pointer;
-  font-family:"Inter",sans-serif;font-size:11px;font-weight:600;letter-spacing:.6px}
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:.6px}
 .tbtn:hover{background:#1e293b}
 .vis{font-size:11px;letter-spacing:.5px;color:#64748b;font-weight:500;margin-left:auto}
 /* SECCIONES POR TRANSPORTE */
@@ -384,9 +384,9 @@ N'<div id="um">
 .tsec-arrow{color:#38bdf8;font-size:13px;transition:transform .2s;width:14px;text-align:center}
 .tsec.col .tsec-arrow{transform:rotate(-90deg)}
 .tsec.col .tsec-b{display:none}
-.tsec-name{font-family:"Outfit",sans-serif;font-size:15px;font-weight:600;color:#f8fafc;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tsec-name{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;color:#f8fafc;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tsec-mini{font-size:12px;color:#94a3b8;white-space:nowrap;display:flex;gap:6px;align-items:center}
-.tsec-mini b{color:#f8fafc;font-family:"Outfit",sans-serif;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.tsec-mini b{color:#f8fafc;font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
 .tsec-mini .c-act{color:#4ade80} .tsec-mini .c-sgps{color:#f87171}
 .tsec-b{overflow-x:auto}
 .tb{width:100%;border-collapse:collapse;min-width:820px}
@@ -396,9 +396,9 @@ N'<div id="um">
 .tb td:last-child{white-space:normal;min-width:180px;color:#94a3b8}
 .tb tbody tr:nth-child(even) td{background:rgba(148,163,184,.025)}
 .tb tbody tr:hover td{background:rgba(56,189,248,.06)}
-.td-placa{font-family:"JetBrains Mono","Outfit",monospace;font-size:13px;font-weight:600;letter-spacing:.5px;color:#f8fafc}
+.td-placa{font-family:"Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;font-size:13px;font-weight:600;letter-spacing:.5px;color:#f8fafc}
 .td-dim{color:#94a3b8}
-.td-mono{font-family:"JetBrains Mono",monospace;font-size:12px;color:#cbd5e1;font-variant-numeric:tabular-nums}
+.td-mono{font-family:"Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;font-size:12px;color:#cbd5e1;font-variant-numeric:tabular-nums}
 .td-late{color:#f87171!important;font-weight:600} .td-ok{color:#4ade80!important;font-weight:600}
 .lnk{color:#38bdf8!important;font-weight:600;text-decoration:none}
 .lnk:hover{text-decoration:underline}
