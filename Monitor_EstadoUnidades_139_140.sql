@@ -5,6 +5,7 @@
    - Por vehículo se lee UN solo evento GPS confiable (Codigo 209/7/6) y SOLO
      dentro de los últimos 30 minutos. Si no hay evento en la ventana, la unidad
      queda como SIN GPS y no se evalúa ninguna geocerca.
+   - Solo se consideran vehículos con Vehiculo.INT1 = 1.
    - Por vehículo se toma un "viaje rector" con prioridad:
        90 En Tránsito > 93 En Proceso de Carga > 92 Programado > 97 Inicial
      (99 Finalizado nunca se considera).
@@ -85,6 +86,8 @@ ViajeActivo AS (
                             V.IdViaje DESC) AS rn
         FROM Jornada J WITH (NOLOCK)
         JOIN Viaje   V WITH (NOLOCK) ON V.IdJornada = J.IdJornada
+        JOIN Vehiculo VH WITH (NOLOCK) ON VH.IdVehiculo = V.IdVehiculo
+                                      AND VH.INT1 = 1          -- solo los vehiculos marcados (Vehiculo.INT1 = 1)
         WHERE J.IdOperacion IN (139, 140)
           AND V.IdEstadoViaje IN (90, 92, 93, 97)
           AND V.IdVehiculo IS NOT NULL
