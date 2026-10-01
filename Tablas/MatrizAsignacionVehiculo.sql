@@ -149,11 +149,21 @@ WHERE NOT EXISTS (
 GO
 
 /* ---------------------------------------------------------------------------
+   La vista se borra y se vuelve a crear en cada ejecucion. Al borrarla SQL
+   Server elimina tambien los triggers que tenga, con cualquier nombre (por ej.
+   Z_TR_MatrizAsignacionVehiculo_Update de una ejecucion anterior). Es necesario
+   porque una vista admite un solo trigger INSTEAD OF UPDATE (error 2111).
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('dbo.MatrizAsignacionVehiculo', 'V') IS NOT NULL
+	DROP VIEW dbo.MatrizAsignacionVehiculo
+GO
+
+/* ---------------------------------------------------------------------------
    Matriz que ve y edita el usuario.
    TIPOS: la lista VALUES de filas y las columnas se mantienen iguales en la
    vista y en el trigger de abajo.
    --------------------------------------------------------------------------- */
-CREATE OR ALTER VIEW dbo.MatrizAsignacionVehiculo
+CREATE VIEW dbo.MatrizAsignacionVehiculo
 AS
 SELECT t.IdTipoVehiculo AS Id /* IdTipoVehiculo de la fila; informativo, no se usa */
 	,t.Nombre AS [Si el viaje es de tipo]
