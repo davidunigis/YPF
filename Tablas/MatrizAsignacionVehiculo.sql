@@ -10,19 +10,22 @@
    COMO SE LEE LA MATRIZ
        SELECT * FROM MatrizAsignacionVehiculo
 
-       Si el viaje es de tipo    | HG TI  30-35 | HG TII  18-20 | HG TII Liv 5-10
-       --------------------------+--------------+---------------+-----------------
-       HG TI  30-35 tn/m         |      x       |       x       |       x
-       HG TII  18-20 tn/m        |              |       x       |       x
-       HG TII Liv 5-10 Tn/m      |              |               |       x
+       Id  | Si el viaje es de tipo | HG TI  30-35 | HG TII  18-20 | HG TII Liv 5-10
+       ----+------------------------+--------------+---------------+-----------------
+       208 | HG TI  30-35 tn/m      |      x       |       x       |       x
+       207 | HG TII  18-20 tn/m     |              |       x       |       x
+       209 | HG TII Liv 5-10 Tn/m   |              |               |       x
 
      - Cada FILA es el tipo de vehiculo con el que se creo el viaje.
      - Cada COLUMNA es un tipo de vehiculo que se le quiere asignar.
      - "x" = se puede asignar.  Vacio = NO se puede asignar.
+     - Id es el IdTipoVehiculo de la fila. Es solo informativo: no se usa y, como
+       la matriz no tiene registros nuevos, no hace falta mantenerlo.
 
    COMO SE EDITA
      - En SSMS: clic derecho sobre la vista > "Edit Top 200 Rows" y escribir o
-       borrar la "x" en la celda. No se edita la primera columna.
+       borrar la "x" en la celda. Solo se editan las celdas de las columnas de
+       tipos de vehiculo (no Id ni "Si el viaje es de tipo").
      - Por SQL:
          UPDATE MatrizAsignacionVehiculo
          SET [HG TII Liv 5-10 Tn/m] = 'x'
@@ -152,7 +155,8 @@ GO
    --------------------------------------------------------------------------- */
 CREATE OR ALTER VIEW dbo.MatrizAsignacionVehiculo
 AS
-SELECT t.Nombre AS [Si el viaje es de tipo]
+SELECT t.IdTipoVehiculo AS Id /* IdTipoVehiculo de la fila; informativo, no se usa */
+	,t.Nombre AS [Si el viaje es de tipo]
 	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 208 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TI  30-35 tn/m]
 	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 207 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TII  18-20 tn/m]
 	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 209 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TII Liv 5-10 Tn/m]
@@ -191,7 +195,7 @@ BEGIN
 		RETURN;
 	END
 
-	/* La primera columna identifica el tipo de viaje y no se puede modificar */
+	/* La columna "Si el viaje es de tipo" identifica la fila y no se puede modificar */
 	IF EXISTS (
 			SELECT 1
 			FROM inserted i
@@ -202,7 +206,7 @@ BEGIN
 					)
 			)
 	BEGIN
-		RAISERROR ('No se puede modificar la primera columna (tipo de viaje). Solo marque o borre las "x".', 16, 1);
+		RAISERROR ('No se puede modificar el tipo de viaje (columna "Si el viaje es de tipo"). Solo marque o borre las "x".', 16, 1);
 
 		RETURN;
 	END
