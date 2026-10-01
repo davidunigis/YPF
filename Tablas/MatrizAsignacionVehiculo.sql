@@ -4,11 +4,11 @@
    Define que tipos de vehiculo se pueden asignar a un viaje, segun el tipo de
    vehiculo con el que el viaje fue creado.
 
-   QUE TOCA EL USUARIO  ->  Z_VW_MatrizAsignacionVehiculo  (una matriz con "x")
-   QUE USA EL SP        ->  Z_ReglaAsignacionVehiculo      (tabla; no se edita a mano)
+   QUE TOCA EL USUARIO  ->  MatrizAsignacionVehiculo  (vista: una matriz con "x")
+   QUE USA EL SP        ->  ReglaAsignacionVehiculo    (tabla; no se edita a mano)
 
    COMO SE LEE LA MATRIZ
-       SELECT * FROM Z_VW_MatrizAsignacionVehiculo
+       SELECT * FROM MatrizAsignacionVehiculo
 
        Si el viaje es de tipo    | HG TI  30-35 | HG TII  18-20 | HG TII Liv 5-10
        --------------------------+--------------+---------------+-----------------
@@ -24,7 +24,7 @@
      - En SSMS: clic derecho sobre la vista > "Edit Top 200 Rows" y escribir o
        borrar la "x" en la celda. No se edita la primera columna.
      - Por SQL:
-         UPDATE Z_VW_MatrizAsignacionVehiculo
+         UPDATE MatrizAsignacionVehiculo
          SET [HG TII Liv 5-10 Tn/m] = 'x'
          WHERE [Si el viaje es de tipo] = 'HG TII  18-20 tn/m'
      - Solo se admite "x" o vacio; cualquier otro valor se rechaza.
@@ -34,8 +34,8 @@
      (asi no se bloquean tipos que todavia no se parametrizaron).
 
    COMO AGREGAR UN TIPO NUEVO A LA MATRIZ (ej. Cuadrilla)
-     1) Cargar sus filas en Z_ReglaAsignacionVehiculo (ver el ejemplo al final).
-     2) Agregarlo en Z_VW_MatrizAsignacionVehiculo y en su trigger
+     1) Cargar sus filas en ReglaAsignacionVehiculo (ver el ejemplo al final).
+     2) Agregarlo en MatrizAsignacionVehiculo y en su trigger
         (una columna mas y una linea mas en cada lista; ver marcas "TIPOS").
    ============================================================================= */
 USE [UNIGIS_DataRepository_YPF]
@@ -48,8 +48,9 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 /* ---------------------------------------------------------------------------
-   Limpieza de la primera version (tabla con IdOperacion y vistas con SI/NO).
-   Solo se ejecuta si esa estructura existe; la tabla nueva nunca se borra.
+   Limpieza de versiones anteriores de este script (objetos con prefijo Z_).
+   Solo actua si esos objetos existen. Las reglas ya editadas se migran a la
+   tabla nueva (ver "Migracion" mas abajo) antes de borrar la tabla vieja.
    --------------------------------------------------------------------------- */
 IF OBJECT_ID('dbo.Z_VW_ReglaAsignacionVehiculoResumen', 'V') IS NOT NULL
 	DROP VIEW dbo.Z_VW_ReglaAsignacionVehiculoResumen
@@ -57,6 +58,11 @@ IF OBJECT_ID('dbo.Z_VW_ReglaAsignacionVehiculoResumen', 'V') IS NOT NULL
 IF OBJECT_ID('dbo.Z_VW_ReglaAsignacionVehiculo', 'V') IS NOT NULL
 	DROP VIEW dbo.Z_VW_ReglaAsignacionVehiculo
 
+/* Al borrar la vista tambien se borra su trigger Z_TR_MatrizAsignacionVehiculo_Update */
+IF OBJECT_ID('dbo.Z_VW_MatrizAsignacionVehiculo', 'V') IS NOT NULL
+	DROP VIEW dbo.Z_VW_MatrizAsignacionVehiculo
+
+/* Primera version de la tabla (tenia IdOperacion): solo traia datos de ejemplo */
 IF OBJECT_ID('dbo.Z_ReglaAsignacionVehiculo', 'U') IS NOT NULL
 	AND COL_LENGTH('dbo.Z_ReglaAsignacionVehiculo', 'IdOperacion') IS NOT NULL
 	DROP TABLE dbo.Z_ReglaAsignacionVehiculo
@@ -67,16 +73,42 @@ GO
      "un viaje del tipo IdTipoVehiculoViaje, ¿puede llevar un vehiculo del tipo
       IdTipoVehiculoHabilitado?"  ->  Habilitado = 1 (si) / 0 (no)
    --------------------------------------------------------------------------- */
-IF OBJECT_ID('dbo.Z_ReglaAsignacionVehiculo', 'U') IS NULL
+IF OBJECT_ID('dbo.ReglaAsignacionVehiculo', 'U') IS NULL
 BEGIN
-	CREATE TABLE dbo.Z_ReglaAsignacionVehiculo (
+	CREATE TABLE dbo.ReglaAsignacionVehiculo (
 		IdTipoVehiculoViaje INT NOT NULL /* Tipo con el que se creo el viaje */
 		,IdTipoVehiculoHabilitado INT NOT NULL /* Tipo de vehiculo que se puede asignar */
-		,Habilitado BIT NOT NULL CONSTRAINT DF_Z_ReglaAsignacionVehiculo_Habilitado DEFAULT(1)
-		,CONSTRAINT PK_Z_ReglaAsignacionVehiculo PRIMARY KEY CLUSTERED (IdTipoVehiculoViaje, IdTipoVehiculoHabilitado)
-		,CONSTRAINT FK_Z_ReglaAsignacionVehiculo_Viaje FOREIGN KEY (IdTipoVehiculoViaje) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
-		,CONSTRAINT FK_Z_ReglaAsignacionVehiculo_Habilitado FOREIGN KEY (IdTipoVehiculoHabilitado) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
+		,Habilitado BIT NOT NULL CONSTRAINT DF_ReglaAsignacionVehiculo_Habilitado DEFAULT(1)
+		,CONSTRAINT PK_ReglaAsignacionVehiculo PRIMARY KEY CLUSTERED (IdTipoVehiculoViaje, IdTipoVehiculoHabilitado)
+		,CONSTRAINT FK_ReglaAsignacionVehiculo_Viaje FOREIGN KEY (IdTipoVehiculoViaje) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
+		,CONSTRAINT FK_ReglaAsignacionVehiculo_Habilitado FOREIGN KEY (IdTipoVehiculoHabilitado) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
 		)
+END
+GO
+
+/* ---------------------------------------------------------------------------
+   Migracion: si existe la tabla anterior Z_ReglaAsignacionVehiculo (misma
+   estructura, solo cambia el nombre), se copian sus reglas y se borra.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('dbo.Z_ReglaAsignacionVehiculo', 'U') IS NOT NULL
+BEGIN
+	INSERT dbo.ReglaAsignacionVehiculo (
+		IdTipoVehiculoViaje
+		,IdTipoVehiculoHabilitado
+		,Habilitado
+		)
+	SELECT o.IdTipoVehiculoViaje
+		,o.IdTipoVehiculoHabilitado
+		,o.Habilitado
+	FROM dbo.Z_ReglaAsignacionVehiculo o
+	WHERE NOT EXISTS (
+			SELECT 1
+			FROM dbo.ReglaAsignacionVehiculo r
+			WHERE r.IdTipoVehiculoViaje = o.IdTipoVehiculoViaje
+				AND r.IdTipoVehiculoHabilitado = o.IdTipoVehiculoHabilitado
+			)
+
+	DROP TABLE dbo.Z_ReglaAsignacionVehiculo
 END
 GO
 
@@ -91,7 +123,7 @@ GO
      HG TII 18-20         HG TII 18-20 ; HG TII Liv 5-10
      HG TII Liv 5-10      HG TII Liv 5-10
    --------------------------------------------------------------------------- */
-INSERT dbo.Z_ReglaAsignacionVehiculo (
+INSERT dbo.ReglaAsignacionVehiculo (
 	IdTipoVehiculoViaje
 	,IdTipoVehiculoHabilitado
 	,Habilitado
@@ -107,7 +139,7 @@ FROM (
 	) v(IdTipoVehiculoViaje, IdTipoVehiculoHabilitado, Habilitado)
 WHERE NOT EXISTS (
 		SELECT 1
-		FROM dbo.Z_ReglaAsignacionVehiculo r
+		FROM dbo.ReglaAsignacionVehiculo r
 		WHERE r.IdTipoVehiculoViaje = v.IdTipoVehiculoViaje
 			AND r.IdTipoVehiculoHabilitado = v.IdTipoVehiculoHabilitado
 		)
@@ -118,7 +150,7 @@ GO
    TIPOS: la lista VALUES de filas y las columnas se mantienen iguales en la
    vista y en el trigger de abajo.
    --------------------------------------------------------------------------- */
-CREATE OR ALTER VIEW dbo.Z_VW_MatrizAsignacionVehiculo
+CREATE OR ALTER VIEW dbo.MatrizAsignacionVehiculo
 AS
 SELECT t.Nombre AS [Si el viaje es de tipo]
 	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 208 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TI  30-35 tn/m]
@@ -130,16 +162,16 @@ FROM (
 		,(207, 'HG TII  18-20 tn/m')
 		,(209, 'HG TII Liv 5-10 Tn/m')
 	) t(IdTipoVehiculo, Nombre)
-INNER JOIN dbo.Z_ReglaAsignacionVehiculo r ON r.IdTipoVehiculoViaje = t.IdTipoVehiculo
+INNER JOIN dbo.ReglaAsignacionVehiculo r ON r.IdTipoVehiculoViaje = t.IdTipoVehiculo
 GROUP BY t.IdTipoVehiculo
 	,t.Nombre
 GO
 
 /* ---------------------------------------------------------------------------
    Trigger: traduce lo que el usuario escribe en la matriz ("x" / vacio) a
-   Habilitado = 1 / 0 en Z_ReglaAsignacionVehiculo.
+   Habilitado = 1 / 0 en ReglaAsignacionVehiculo.
    --------------------------------------------------------------------------- */
-CREATE OR ALTER TRIGGER dbo.Z_TR_MatrizAsignacionVehiculo_Update ON dbo.Z_VW_MatrizAsignacionVehiculo
+CREATE OR ALTER TRIGGER dbo.TR_MatrizAsignacionVehiculo_Update ON dbo.MatrizAsignacionVehiculo
 INSTEAD OF UPDATE
 AS
 BEGIN
@@ -205,12 +237,12 @@ BEGIN
 
 	UPDATE r
 	SET r.Habilitado = c.Habilitado
-	FROM dbo.Z_ReglaAsignacionVehiculo r
+	FROM dbo.ReglaAsignacionVehiculo r
 	INNER JOIN @Cambios c ON c.IdTipoVehiculoViaje = r.IdTipoVehiculoViaje
 		AND c.IdTipoVehiculoHabilitado = r.IdTipoVehiculoHabilitado
 	WHERE r.Habilitado <> c.Habilitado;
 
-	INSERT dbo.Z_ReglaAsignacionVehiculo (
+	INSERT dbo.ReglaAsignacionVehiculo (
 		IdTipoVehiculoViaje
 		,IdTipoVehiculoHabilitado
 		,Habilitado
@@ -221,7 +253,7 @@ BEGIN
 	FROM @Cambios c
 	WHERE NOT EXISTS (
 			SELECT 1
-			FROM dbo.Z_ReglaAsignacionVehiculo r
+			FROM dbo.ReglaAsignacionVehiculo r
 			WHERE r.IdTipoVehiculoViaje = c.IdTipoVehiculoViaje
 				AND r.IdTipoVehiculoHabilitado = c.IdTipoVehiculoHabilitado
 			)
@@ -234,7 +266,7 @@ GO
    habilita a el. (Para Cuadrilla: asi un viaje de cuadrilla solo recibe
    vehiculos de cuadrilla.)
 
-   INSERT Z_ReglaAsignacionVehiculo (IdTipoVehiculoViaje, IdTipoVehiculoHabilitado, Habilitado)
+   INSERT ReglaAsignacionVehiculo (IdTipoVehiculoViaje, IdTipoVehiculoHabilitado, Habilitado)
    VALUES (<ID>, <ID>, 1)
          ,(<ID>, 207, 0), (<ID>, 208, 0), (<ID>, 209, 0)
          ,(207, <ID>, 0), (208, <ID>, 0), (209, <ID>, 0)
