@@ -1,33 +1,42 @@
 ﻿/* =============================================================================
-   Z_ReglaAsignacionVehiculo
+   REGLA DE ASIGNACION DE VEHICULOS
    -----------------------------------------------------------------------------
-   Parametriza que TIPOS DE VEHICULO se pueden asignar a un viaje, segun el
-   tipo de vehiculo con el que el viaje fue creado (el "tipo requerido").
+   Define que tipos de vehiculo se pueden asignar a un viaje, segun el tipo de
+   vehiculo con el que el viaje fue creado.
 
-   COMO LEER LA TABLA
-     Cada fila responde a una pregunta:
-       "Un viaje que pide el tipo X, ¿puede salir con un vehiculo de tipo Y?"
-     - IdTipoVehiculoViaje      = X (tipo requerido por el viaje)
-     - IdTipoVehiculoHabilitado = Y (tipo de vehiculo que se quiere asignar)
-     - Habilitado               = 1 SI se puede / 0 NO se puede
+   QUE TOCA EL USUARIO  ->  Z_VW_MatrizAsignacionVehiculo  (una matriz con "x")
+   QUE USA EL SP        ->  Z_ReglaAsignacionVehiculo      (tabla; no se edita a mano)
 
-   COMO USARLA (el usuario solo necesita tocar la columna Habilitado)
-     - Para ver las reglas con nombres:      SELECT * FROM Z_VW_ReglaAsignacionVehiculo
-     - Para ver el resumen estilo Excel:     SELECT * FROM Z_VW_ReglaAsignacionVehiculoResumen
-     - Habilitar / deshabilitar una regla:
-         UPDATE Z_ReglaAsignacionVehiculo SET Habilitado = 0
-         WHERE IdReglaAsignacionVehiculo = <id>
-     - Agregar un tipo nuevo: insertar una fila por cada combinacion
-       (ver el ejemplo al final de este script).
+   COMO SE LEE LA MATRIZ
+       SELECT * FROM Z_VW_MatrizAsignacionVehiculo
 
-   CRITERIO CUANDO NO HAY REGLA
-     - Si un tipo requerido NO tiene ninguna fila para la operacion, no se
-       restringe la asignacion (asi no se bloquean tipos todavia no cargados).
-     - Si tiene filas, solo se permiten los tipos con Habilitado = 1.
+       Si el viaje es de tipo    | HG TI  30-35 | HG TII  18-20 | HG TII Liv 5-10
+       --------------------------+--------------+---------------+-----------------
+       HG TI  30-35 tn/m         |      x       |       x       |       x
+       HG TII  18-20 tn/m        |              |       x       |       x
+       HG TII Liv 5-10 Tn/m      |              |               |       x
 
-   NOTA: las reglas se guardan por IdTipoVehiculo y NO por nombre, porque los
-   nombres de TipoVehiculo tienen espacios no separables y diferencias de
-   escritura (ej. "HG TIIl Liv 5-10 Tn/m").
+     - Cada FILA es el tipo de vehiculo con el que se creo el viaje.
+     - Cada COLUMNA es un tipo de vehiculo que se le quiere asignar.
+     - "x" = se puede asignar.  Vacio = NO se puede asignar.
+
+   COMO SE EDITA
+     - En SSMS: clic derecho sobre la vista > "Edit Top 200 Rows" y escribir o
+       borrar la "x" en la celda. No se edita la primera columna.
+     - Por SQL:
+         UPDATE Z_VW_MatrizAsignacionVehiculo
+         SET [HG TII Liv 5-10 Tn/m] = 'x'
+         WHERE [Si el viaje es de tipo] = 'HG TII  18-20 tn/m'
+     - Solo se admite "x" o vacio; cualquier otro valor se rechaza.
+
+   CRITERIO PARA TIPOS QUE NO ESTAN EN LA MATRIZ
+     Un tipo de vehiculo que no aparece como fila de la matriz no se restringe
+     (asi no se bloquean tipos que todavia no se parametrizaron).
+
+   COMO AGREGAR UN TIPO NUEVO A LA MATRIZ (ej. Cuadrilla)
+     1) Cargar sus filas en Z_ReglaAsignacionVehiculo (ver el ejemplo al final).
+     2) Agregarlo en Z_VW_MatrizAsignacionVehiculo y en su trigger
+        (una columna mas y una linea mas en cada lista; ver marcas "TIPOS").
    ============================================================================= */
 USE [UNIGIS_DataRepository_YPF]
 GO
@@ -39,49 +48,55 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 /* ---------------------------------------------------------------------------
-   Tabla
+   Limpieza de la primera version (tabla con IdOperacion y vistas con SI/NO).
+   Solo se ejecuta si esa estructura existe; la tabla nueva nunca se borra.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('dbo.Z_VW_ReglaAsignacionVehiculoResumen', 'V') IS NOT NULL
+	DROP VIEW dbo.Z_VW_ReglaAsignacionVehiculoResumen
+
+IF OBJECT_ID('dbo.Z_VW_ReglaAsignacionVehiculo', 'V') IS NOT NULL
+	DROP VIEW dbo.Z_VW_ReglaAsignacionVehiculo
+
+IF OBJECT_ID('dbo.Z_ReglaAsignacionVehiculo', 'U') IS NOT NULL
+	AND COL_LENGTH('dbo.Z_ReglaAsignacionVehiculo', 'IdOperacion') IS NOT NULL
+	DROP TABLE dbo.Z_ReglaAsignacionVehiculo
+GO
+
+/* ---------------------------------------------------------------------------
+   Tabla (la usa el SP). Una fila por combinacion:
+     "un viaje del tipo IdTipoVehiculoViaje, ¿puede llevar un vehiculo del tipo
+      IdTipoVehiculoHabilitado?"  ->  Habilitado = 1 (si) / 0 (no)
    --------------------------------------------------------------------------- */
 IF OBJECT_ID('dbo.Z_ReglaAsignacionVehiculo', 'U') IS NULL
 BEGIN
 	CREATE TABLE dbo.Z_ReglaAsignacionVehiculo (
-		IdReglaAsignacionVehiculo INT IDENTITY(1, 1) NOT NULL
-		,IdOperacion INT NOT NULL
-		,IdTipoVehiculoViaje INT NOT NULL /* Tipo requerido por el viaje */
+		IdTipoVehiculoViaje INT NOT NULL /* Tipo con el que se creo el viaje */
 		,IdTipoVehiculoHabilitado INT NOT NULL /* Tipo de vehiculo que se puede asignar */
 		,Habilitado BIT NOT NULL CONSTRAINT DF_Z_ReglaAsignacionVehiculo_Habilitado DEFAULT(1)
-		,Observaciones VARCHAR(200) NULL
-		,FechaAlta DATETIME NOT NULL CONSTRAINT DF_Z_ReglaAsignacionVehiculo_FechaAlta DEFAULT(GETDATE())
-		,CONSTRAINT PK_Z_ReglaAsignacionVehiculo PRIMARY KEY CLUSTERED (IdReglaAsignacionVehiculo)
-		,CONSTRAINT UQ_Z_ReglaAsignacionVehiculo UNIQUE (IdOperacion, IdTipoVehiculoViaje, IdTipoVehiculoHabilitado)
-		,CONSTRAINT FK_Z_ReglaAsignacionVehiculo_TipoViaje FOREIGN KEY (IdTipoVehiculoViaje) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
-		,CONSTRAINT FK_Z_ReglaAsignacionVehiculo_TipoHabilitado FOREIGN KEY (IdTipoVehiculoHabilitado) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
+		,CONSTRAINT PK_Z_ReglaAsignacionVehiculo PRIMARY KEY CLUSTERED (IdTipoVehiculoViaje, IdTipoVehiculoHabilitado)
+		,CONSTRAINT FK_Z_ReglaAsignacionVehiculo_Viaje FOREIGN KEY (IdTipoVehiculoViaje) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
+		,CONSTRAINT FK_Z_ReglaAsignacionVehiculo_Habilitado FOREIGN KEY (IdTipoVehiculoHabilitado) REFERENCES dbo.TipoVehiculo(IdTipoVehiculo)
 		)
 END
 GO
 
 /* ---------------------------------------------------------------------------
-   Datos iniciales - Operacion 141
+   Datos iniciales
      207 = HG TII  18-20 tn/m
      208 = HG TI   30-35 tn/m
      209 = HG TII Liv 5-10 Tn/m
 
-   REGLA                      HABILITA
-     HG TI  30-35             HG TI 30-35 ; HG TII 18-20 ; HG TII Liv 5-10
-     HG TII 18-20             HG TII 18-20 ; HG TII Liv 5-10
-     HG TII Liv 5-10          HG TII Liv 5-10
-   Se carga la matriz completa (3 x 3): las combinaciones que no se permiten
-   quedan con Habilitado = 0, asi el usuario solo tiene que cambiar el 0/1.
+   TIPO DEL VIAJE         HABILITA
+     HG TI  30-35         HG TI 30-35 ; HG TII 18-20 ; HG TII Liv 5-10
+     HG TII 18-20         HG TII 18-20 ; HG TII Liv 5-10
+     HG TII Liv 5-10      HG TII Liv 5-10
    --------------------------------------------------------------------------- */
-DECLARE @IdOperacion INT = 141;
-
 INSERT dbo.Z_ReglaAsignacionVehiculo (
-	IdOperacion
-	,IdTipoVehiculoViaje
+	IdTipoVehiculoViaje
 	,IdTipoVehiculoHabilitado
 	,Habilitado
 	)
-SELECT @IdOperacion
-	,v.IdTipoVehiculoViaje
+SELECT v.IdTipoVehiculoViaje
 	,v.IdTipoVehiculoHabilitado
 	,v.Habilitado
 FROM (
@@ -93,69 +108,136 @@ FROM (
 WHERE NOT EXISTS (
 		SELECT 1
 		FROM dbo.Z_ReglaAsignacionVehiculo r
-		WHERE r.IdOperacion = @IdOperacion
-			AND r.IdTipoVehiculoViaje = v.IdTipoVehiculoViaje
+		WHERE r.IdTipoVehiculoViaje = v.IdTipoVehiculoViaje
 			AND r.IdTipoVehiculoHabilitado = v.IdTipoVehiculoHabilitado
 		)
 GO
 
 /* ---------------------------------------------------------------------------
-   Vista 1: una fila por regla, con nombres (para consultar y editar con
-   referencia al IdReglaAsignacionVehiculo).
+   Matriz que ve y edita el usuario.
+   TIPOS: la lista VALUES de filas y las columnas se mantienen iguales en la
+   vista y en el trigger de abajo.
    --------------------------------------------------------------------------- */
-CREATE OR ALTER VIEW dbo.Z_VW_ReglaAsignacionVehiculo
+CREATE OR ALTER VIEW dbo.Z_VW_MatrizAsignacionVehiculo
 AS
-SELECT r.IdReglaAsignacionVehiculo
-	,r.IdOperacion
-	,r.IdTipoVehiculoViaje
-	,tv.Descripcion AS TipoVehiculoViaje
-	,r.IdTipoVehiculoHabilitado
-	,th.Descripcion AS TipoVehiculoHabilitado
-	,CASE r.Habilitado
-		WHEN 1
-			THEN 'SI'
-		ELSE 'NO'
-		END AS Permite
-	,r.Habilitado
-	,r.Observaciones
-FROM dbo.Z_ReglaAsignacionVehiculo r
-INNER JOIN dbo.TipoVehiculo tv ON tv.IdTipoVehiculo = r.IdTipoVehiculoViaje
-INNER JOIN dbo.TipoVehiculo th ON th.IdTipoVehiculo = r.IdTipoVehiculoHabilitado
+SELECT t.Nombre AS [Si el viaje es de tipo]
+	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 208 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TI  30-35 tn/m]
+	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 207 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TII  18-20 tn/m]
+	,CAST(MAX(CASE WHEN r.IdTipoVehiculoHabilitado = 209 AND r.Habilitado = 1 THEN 'x' ELSE '' END) AS VARCHAR(10)) AS [HG TII Liv 5-10 Tn/m]
+FROM (
+	VALUES
+		 (208, 'HG TI  30-35 tn/m')
+		,(207, 'HG TII  18-20 tn/m')
+		,(209, 'HG TII Liv 5-10 Tn/m')
+	) t(IdTipoVehiculo, Nombre)
+INNER JOIN dbo.Z_ReglaAsignacionVehiculo r ON r.IdTipoVehiculoViaje = t.IdTipoVehiculo
+GROUP BY t.IdTipoVehiculo
+	,t.Nombre
 GO
 
 /* ---------------------------------------------------------------------------
-   Vista 2: resumen estilo Excel
-   (TIPO UNIDAD | UNIDADES QUE HABILITA, separadas por ";").
+   Trigger: traduce lo que el usuario escribe en la matriz ("x" / vacio) a
+   Habilitado = 1 / 0 en Z_ReglaAsignacionVehiculo.
    --------------------------------------------------------------------------- */
-CREATE OR ALTER VIEW dbo.Z_VW_ReglaAsignacionVehiculoResumen
+CREATE OR ALTER TRIGGER dbo.Z_TR_MatrizAsignacionVehiculo_Update ON dbo.Z_VW_MatrizAsignacionVehiculo
+INSTEAD OF UPDATE
 AS
-SELECT r.IdOperacion
-	,r.IdTipoVehiculoViaje
-	,tv.Descripcion AS TipoUnidad
-	,STUFF((
-			SELECT ';' + th.Descripcion
-			FROM dbo.Z_ReglaAsignacionVehiculo r2
-			INNER JOIN dbo.TipoVehiculo th ON th.IdTipoVehiculo = r2.IdTipoVehiculoHabilitado
-			WHERE r2.IdOperacion = r.IdOperacion
-				AND r2.IdTipoVehiculoViaje = r.IdTipoVehiculoViaje
-				AND r2.Habilitado = 1
-			ORDER BY th.Descripcion
-			FOR XML PATH('')
-				,TYPE
-			).value('.', 'VARCHAR(MAX)'), 1, 1, '') AS UnidadesQueHabilita
-FROM dbo.Z_ReglaAsignacionVehiculo r
-INNER JOIN dbo.TipoVehiculo tv ON tv.IdTipoVehiculo = r.IdTipoVehiculoViaje
-GROUP BY r.IdOperacion
-	,r.IdTipoVehiculoViaje
-	,tv.Descripcion
+BEGIN
+	SET NOCOUNT ON;
+
+	/* Solo se admite "x" o vacio en las celdas */
+	IF EXISTS (
+			SELECT 1
+			FROM inserted i
+			WHERE UPPER(LTRIM(RTRIM(ISNULL(i.[HG TI  30-35 tn/m], '')))) NOT IN ('', 'X')
+				OR UPPER(LTRIM(RTRIM(ISNULL(i.[HG TII  18-20 tn/m], '')))) NOT IN ('', 'X')
+				OR UPPER(LTRIM(RTRIM(ISNULL(i.[HG TII Liv 5-10 Tn/m], '')))) NOT IN ('', 'X')
+			)
+	BEGIN
+		RAISERROR ('Solo se admite "x" (se puede asignar) o vacio (no se puede asignar).', 16, 1);
+
+		RETURN;
+	END
+
+	/* La primera columna identifica el tipo de viaje y no se puede modificar */
+	IF EXISTS (
+			SELECT 1
+			FROM inserted i
+			WHERE i.[Si el viaje es de tipo] NOT IN (
+					'HG TI  30-35 tn/m'
+					,'HG TII  18-20 tn/m'
+					,'HG TII Liv 5-10 Tn/m'
+					)
+			)
+	BEGIN
+		RAISERROR ('No se puede modificar la primera columna (tipo de viaje). Solo marque o borre las "x".', 16, 1);
+
+		RETURN;
+	END
+
+	DECLARE @Cambios TABLE (
+		IdTipoVehiculoViaje INT NOT NULL
+		,IdTipoVehiculoHabilitado INT NOT NULL
+		,Habilitado BIT NOT NULL
+		);
+
+	INSERT @Cambios (
+		IdTipoVehiculoViaje
+		,IdTipoVehiculoHabilitado
+		,Habilitado
+		)
+	SELECT t.IdTipoVehiculo
+		,v.IdTipoVehiculoHabilitado
+		,v.Habilitado
+	FROM inserted i
+	INNER JOIN (
+		VALUES
+			 (208, 'HG TI  30-35 tn/m')
+			,(207, 'HG TII  18-20 tn/m')
+			,(209, 'HG TII Liv 5-10 Tn/m')
+		) t(IdTipoVehiculo, Nombre) ON t.Nombre = i.[Si el viaje es de tipo]
+	CROSS APPLY (
+		VALUES
+			 (208, CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(i.[HG TI  30-35 tn/m], '')))) = 'X' THEN 1 ELSE 0 END)
+			,(207, CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(i.[HG TII  18-20 tn/m], '')))) = 'X' THEN 1 ELSE 0 END)
+			,(209, CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(i.[HG TII Liv 5-10 Tn/m], '')))) = 'X' THEN 1 ELSE 0 END)
+		) v(IdTipoVehiculoHabilitado, Habilitado);
+
+	UPDATE r
+	SET r.Habilitado = c.Habilitado
+	FROM dbo.Z_ReglaAsignacionVehiculo r
+	INNER JOIN @Cambios c ON c.IdTipoVehiculoViaje = r.IdTipoVehiculoViaje
+		AND c.IdTipoVehiculoHabilitado = r.IdTipoVehiculoHabilitado
+	WHERE r.Habilitado <> c.Habilitado;
+
+	INSERT dbo.Z_ReglaAsignacionVehiculo (
+		IdTipoVehiculoViaje
+		,IdTipoVehiculoHabilitado
+		,Habilitado
+		)
+	SELECT c.IdTipoVehiculoViaje
+		,c.IdTipoVehiculoHabilitado
+		,c.Habilitado
+	FROM @Cambios c
+	WHERE NOT EXISTS (
+			SELECT 1
+			FROM dbo.Z_ReglaAsignacionVehiculo r
+			WHERE r.IdTipoVehiculoViaje = c.IdTipoVehiculoViaje
+				AND r.IdTipoVehiculoHabilitado = c.IdTipoVehiculoHabilitado
+			)
+END
 GO
 
 /* ---------------------------------------------------------------------------
-   Ejemplo: agregar un tipo nuevo (reemplazar <ID_NUEVO> por su IdTipoVehiculo)
-   Una fila por cada combinacion; el nuevo tipo solo se habilita a si mismo.
+   Ejemplo: cargar un tipo nuevo (reemplazar <ID> por su IdTipoVehiculo).
+   Se habilita solo con si mismo y con ningun otro tipo, y ningun otro tipo lo
+   habilita a el. (Para Cuadrilla: asi un viaje de cuadrilla solo recibe
+   vehiculos de cuadrilla.)
 
-   INSERT Z_ReglaAsignacionVehiculo (IdOperacion, IdTipoVehiculoViaje, IdTipoVehiculoHabilitado, Habilitado)
-   VALUES (141, <ID_NUEVO>, <ID_NUEVO>, 1)
-         ,(141, <ID_NUEVO>, 207, 0), (141, <ID_NUEVO>, 208, 0), (141, <ID_NUEVO>, 209, 0)
-         ,(141, 207, <ID_NUEVO>, 0), (141, 208, <ID_NUEVO>, 0), (141, 209, <ID_NUEVO>, 0)
+   INSERT Z_ReglaAsignacionVehiculo (IdTipoVehiculoViaje, IdTipoVehiculoHabilitado, Habilitado)
+   VALUES (<ID>, <ID>, 1)
+         ,(<ID>, 207, 0), (<ID>, 208, 0), (<ID>, 209, 0)
+         ,(207, <ID>, 0), (208, <ID>, 0), (209, <ID>, 0)
+
+   Luego agregarlo en la vista y en el trigger (marcas TIPOS).
    --------------------------------------------------------------------------- */
