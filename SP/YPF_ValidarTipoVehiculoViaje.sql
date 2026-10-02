@@ -9,32 +9,32 @@
      Resultado = 'OK'  , Mensaje = NULL   -> se puede continuar
      Resultado = NULL  , Mensaje = texto  -> no se permite; se muestra el texto
 
+   DE DONDE SALE EL TIPO DE VEHICULO REQUERIDO
+     De Viaje.Varchar6, que llega de la entidad anterior. Viaje.IdTipoVehiculo NO
+     se usa (por ahora esta en NULL). El SP no modifica el viaje: solo lee y
+     escribe en Log. Varchar6 puede traer, probado en este orden:
+       1) El IdTipoVehiculo                          ej. '208'
+       2) La referencia externa del tipo             TipoVehiculo.RefVehiculoExterno
+       3) El nombre del tipo como figura en la matriz ej. 'HG TI  30-35 tn/m'
+          (no distingue mayusculas ni espacios repetidos)
+
    QUE HACE
-     1) Guarda en Viaje.Varchar6 (varchar 100) el IdTipoVehiculo con el que se creo
-        el viaje, como texto (ej. '208'): es el tipo requerido original. Solo la
-        primera vez: si el usuario cambia despues el tipo del viaje, Varchar6
-        conserva el original. Si el tipo actual es 1 (Pendiente de Asignacion) no
-        se guarda nada. Si Varchar6 ya tiene otro dato (no es un IdTipoVehiculo)
-        no se toca, no se valida y se deja constancia en Log.
-     2) Compara el tipo del vehiculo asignado (Viaje.IdVehiculo) con la matriz,
-        usando el tipo original:
-          - Tipo original sin fila en la matriz (no parametrizado)  -> OK
+     1) Determina el tipo requerido a partir de Varchar6:
+          - Varchar6 vacio                       -> OK (no hay tipo que validar)
+          - Varchar6 que no corresponde a un tipo -> Mensaje (no se pudo determinar)
+     2) Compara el tipo del vehiculo asignado (Viaje.IdVehiculo) con la matriz:
+          - Tipo requerido sin fila en la matriz (no parametrizado) -> OK
           - Vehiculo de un tipo con "x" en la matriz                -> OK
           - Vehiculo "Sin Asignar" (tipo 1) o sin vehiculo          -> Mensaje
           - Vehiculo de un tipo sin "x" en la matriz                -> Mensaje
-        Si el viaje no tiene tipo original (su tipo actual es 1 = Pendiente de
-        Asignacion, o Varchar6 tiene otro dato) no hay nada que validar -> OK.
 
    CUANDO LLAMARLO (configurarlo en UNIGIS)
      Cuando el viaje ya debe tener un vehiculo valido (asignar, confirmar o
      publicar). Todo viaje nace con el vehiculo "Sin Asignar", asi que si se llama
-     al crearlo responde con Mensaje (aunque ya deja guardado el tipo original en
-     Varchar6). El original se guarda en la primera ejecucion: si antes de ella
-     ya se cambio el tipo del viaje, se guardaria el tipo cambiado.
+     al crearlo responde con Mensaje.
 
    PRUEBA
      EXEC dbo.YPF_ValidarTipoVehiculoViaje @IdViaje = <IdViaje>
-     SELECT Varchar6 FROM Viaje WHERE IdViaje = <IdViaje>   -- tipo original guardado
      SELECT TOP 20 * FROM Log WHERE Categoria = 'ValidarTipoVehiculo' ORDER BY 1 DESC
      (Log.Categoria admite solo 20 caracteres; por eso no se usa el nombre completo)
    ============================================================================= */
@@ -54,10 +54,10 @@ BEGIN
 
 	BEGIN TRY
 		DECLARE @Mensaje VARCHAR(500) = NULL
-			,@IdTipoVehiculoViaje INT
+			,@LogDescripcion VARCHAR(200) = NULL
+			,@TipoRequerido VARCHAR(100)
+			,@TipoRequeridoNormalizado NVARCHAR(100)
 			,@IdTipoVehiculoOriginal INT
-			,@CampoOriginal VARCHAR(100)
-			,@CampoEnUso BIT = 0
 			,@IdVehiculo INT
 			,@IdTipoVehiculoAsignado INT
 			,@SinVehiculo BIT = 0
@@ -65,30 +65,47 @@ BEGIN
 			,@NombreAsignado VARCHAR(100)
 			,@Permitidos VARCHAR(300);
 
-		SELECT @IdTipoVehiculoViaje = V.IdTipoVehiculo
-			,@CampoOriginal = LTRIM(RTRIM(V.Varchar6))
+		SELECT @TipoRequerido = LTRIM(RTRIM(V.Varchar6))
 			,@IdVehiculo = V.IdVehiculo
 		FROM Viaje V
 		WHERE V.IdViaje = @IdViaje
 
-		/* Varchar6 guarda el IdTipoVehiculo original como texto (ej. '208') */
-		IF ISNULL(@CampoOriginal, '') = ''
+		/* Tipo de vehiculo requerido: viene en Varchar6 desde la entidad anterior */
+		IF ISNULL(@TipoRequerido, '') = ''
+			SET @LogDescripcion = 'Varchar6 vacio, no se valida IdViaje=' + Convert(VARCHAR, @IdViaje)
+		ELSE
 		BEGIN
-			/* Vacio: se guarda el tipo actual solo la primera vez (1 = Pendiente de Asignacion) */
-			IF @IdTipoVehiculoViaje > 1
-			BEGIN
-				UPDATE Viaje
-				SET Varchar6 = CONVERT(VARCHAR(10), @IdTipoVehiculoViaje)
-				WHERE IdViaje = @IdViaje
-					AND ISNULL(LTRIM(RTRIM(Varchar6)), '') = ''
+			/* 1) Varchar6 trae el IdTipoVehiculo (1 = Pendiente de Asignacion, no cuenta) */
+			SELECT @IdTipoVehiculoOriginal = IdTipoVehiculo
+			FROM TipoVehiculo WITH (NOLOCK)
+			WHERE IdTipoVehiculo = TRY_CONVERT(INT, @TipoRequerido)
+				AND IdTipoVehiculo > 1
 
-				SET @IdTipoVehiculoOriginal = @IdTipoVehiculoViaje
+			/* 2) Varchar6 trae la referencia externa del tipo */
+			IF @IdTipoVehiculoOriginal IS NULL
+				SELECT TOP 1 @IdTipoVehiculoOriginal = IdTipoVehiculo
+				FROM TipoVehiculo WITH (NOLOCK)
+				WHERE RefVehiculoExterno = @TipoRequerido
+					AND IdTipoVehiculo > 1
+				ORDER BY IdTipoVehiculo
+
+			/* 3) Varchar6 trae el nombre del tipo como figura en la matriz */
+			IF @IdTipoVehiculoOriginal IS NULL
+			BEGIN
+				SET @TipoRequeridoNormalizado = REPLACE(REPLACE(REPLACE(REPLACE(@TipoRequerido, NCHAR(160), N' '), N'  ', N' '), N'  ', N' '), N'  ', N' ')
+
+				SELECT TOP 1 @IdTipoVehiculoOriginal = Id
+				FROM Z_MatrizAsignacionVehiculo WITH (NOLOCK)
+				WHERE REPLACE(REPLACE(REPLACE(REPLACE(TipoViaje, NCHAR(160), N' '), N'  ', N' '), N'  ', N' '), N'  ', N' ') = @TipoRequeridoNormalizado
+				ORDER BY Id
+			END
+
+			IF @IdTipoVehiculoOriginal IS NULL
+			BEGIN
+				SET @Mensaje = LEFT('No se pudo determinar el tipo de vehiculo requerido del viaje (Varchar6 = ' + @TipoRequerido + ').', 500)
+				SET @LogDescripcion = 'Tipo requerido no reconocido IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Valor=' + LEFT(@TipoRequerido, 30)
 			END
 		END
-		ELSE IF TRY_CONVERT(INT, @CampoOriginal) > 1
-			SET @IdTipoVehiculoOriginal = TRY_CONVERT(INT, @CampoOriginal)
-		ELSE
-			SET @CampoEnUso = 1 /* Varchar6 tiene otro dato: no se modifica ni se valida */
 
 		/* Validacion del vehiculo asignado contra la matriz de asignacion */
 		IF @IdTipoVehiculoOriginal IS NOT NULL
@@ -96,7 +113,7 @@ BEGIN
 				SELECT 1
 				FROM ReglaAsignacionVehiculo WITH (NOLOCK)
 				WHERE IdTipoVehiculoViaje = @IdTipoVehiculoOriginal
-				) /* Tipo original parametrizado en la matriz */
+				) /* Tipo requerido parametrizado en la matriz */
 		BEGIN
 			SELECT @IdTipoVehiculoAsignado = IdTipoVehiculo
 			FROM Vehiculo WITH (NOLOCK)
@@ -140,6 +157,8 @@ BEGIN
 					SET @Mensaje = LEFT('El viaje no tiene un vehiculo asignado. Tipos permitidos para ' + ISNULL(@NombreOriginal, 'Id ' + CONVERT(VARCHAR(10), @IdTipoVehiculoOriginal)) + ': ' + ISNULL(@Permitidos, 'ninguno') + '.', 500)
 				ELSE
 					SET @Mensaje = LEFT('El vehiculo asignado es de tipo ' + ISNULL(@NombreAsignado, 'Id ' + CONVERT(VARCHAR(10), @IdTipoVehiculoAsignado)) + ' y el viaje requiere ' + ISNULL(@NombreOriginal, 'Id ' + CONVERT(VARCHAR(10), @IdTipoVehiculoOriginal)) + '. Tipos permitidos: ' + ISNULL(@Permitidos, 'ninguno') + '.', 500)
+
+				SET @LogDescripcion = 'Rechazado IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Original=' + Convert(VARCHAR, @IdTipoVehiculoOriginal) + ' Asignado=' + Convert(VARCHAR, @IdTipoVehiculoAsignado)
 			END
 		END
 
@@ -161,13 +180,7 @@ BEGIN
 			)
 		VALUES (
 			'ValidarTipoVehiculo'
-			,CASE
-				WHEN ISNULL(@Mensaje, '') <> ''
-					THEN 'Rechazado IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Original=' + Convert(VARCHAR, @IdTipoVehiculoOriginal) + ' Asignado=' + Convert(VARCHAR, @IdTipoVehiculoAsignado)
-				WHEN @CampoEnUso = 1
-					THEN 'Varchar6 con otro dato, no se valida IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Valor=' + LEFT(@CampoOriginal, 30)
-				ELSE 'OK IdViaje=' + Convert(VARCHAR, @IdViaje)
-				END
+			,ISNULL(@LogDescripcion, 'OK IdViaje=' + Convert(VARCHAR, @IdViaje))
 			,getutcdate()
 			)
 	END TRY
