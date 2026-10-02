@@ -33,7 +33,8 @@
    PRUEBA
      EXEC dbo.YPF_ValidarTipoVehiculoViaje @IdViaje = <IdViaje>
      SELECT Varchar6 FROM Viaje WHERE IdViaje = <IdViaje>   -- tipo original guardado
-     SELECT TOP 20 * FROM Log WHERE Categoria = 'ValidarTipoVehiculoViaje' ORDER BY 1 DESC
+     SELECT TOP 20 * FROM Log WHERE Categoria = 'ValidarTipoVehiculo' ORDER BY 1 DESC
+     (Log.Categoria admite solo 20 caracteres; por eso no se usa el nombre completo)
    ============================================================================= */
 USE [UNIGIS_DataRepository_YPF]
 GO
@@ -148,7 +149,7 @@ BEGIN
 			,FechaHora
 			)
 		VALUES (
-			'ValidarTipoVehiculoViaje'
+			'ValidarTipoVehiculo'
 			,CASE
 				WHEN ISNULL(@Mensaje, '') <> ''
 					THEN 'Rechazado IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Original=' + Convert(VARCHAR, @IdTipoVehiculoOriginal) + ' Asignado=' + Convert(VARCHAR, @IdTipoVehiculoAsignado)
@@ -167,7 +168,7 @@ BEGIN
 			,FechaHora
 			)
 		VALUES (
-			'ValidarTipoVehiculoViaje'
+			'ValidarTipoVehiculo'
 			,'IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Error :' + ERROR_MESSAGE()
 			,getutcdate()
 			)
