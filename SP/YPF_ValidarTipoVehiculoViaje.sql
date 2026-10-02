@@ -10,10 +10,12 @@
      Resultado = NULL  , Mensaje = texto  -> no se permite; se muestra el texto
 
    QUE HACE
-     1) Guarda en Viaje.Int1 el IdTipoVehiculo con el que se creo el viaje (tipo
-        requerido original). Solo la primera vez: si el usuario cambia despues el
-        tipo del viaje, Int1 conserva el original. Si el tipo actual es 1
-        (Pendiente de Asignacion) no se guarda nada.
+     1) Guarda en Viaje.Varchar6 (varchar 100) el IdTipoVehiculo con el que se creo
+        el viaje, como texto (ej. '208'): es el tipo requerido original. Solo la
+        primera vez: si el usuario cambia despues el tipo del viaje, Varchar6
+        conserva el original. Si el tipo actual es 1 (Pendiente de Asignacion) no
+        se guarda nada. Si Varchar6 ya tiene otro dato (no es un IdTipoVehiculo)
+        no se toca, no se valida y se deja constancia en Log.
      2) Si el viaje tiene vehiculo asignado (Viaje.IdVehiculo) compara el tipo de
         ese vehiculo con la matriz usando el tipo original:
           - Sin vehiculo, o vehiculo de tipo 1 (Sin Asignar)     -> OK
@@ -22,7 +24,7 @@
           - Cualquier otra combinacion                            -> Mensaje
 
    CUANDO LLAMARLO (configurarlo en UNIGIS)
-     - Al crear el viaje: para que Int1 quede guardado con el tipo original.
+     - Al crear el viaje: para que Varchar6 quede guardado con el tipo original.
      - Al asignar o cambiar el vehiculo: para validar.
      Con un solo llamado a la vez tambien funciona, pero el original se guarda en
      la primera ejecucion; si ya se cambio el tipo del viaje antes, se guardaria
@@ -30,7 +32,7 @@
 
    PRUEBA
      EXEC dbo.YPF_ValidarTipoVehiculoViaje @IdViaje = <IdViaje>
-     SELECT Int1 FROM Viaje WHERE IdViaje = <IdViaje>   -- tipo original guardado
+     SELECT Varchar6 FROM Viaje WHERE IdViaje = <IdViaje>   -- tipo original guardado
      SELECT TOP 20 * FROM Log WHERE Categoria = 'ValidarTipoVehiculoViaje' ORDER BY 1 DESC
    ============================================================================= */
 USE [UNIGIS_DataRepository_YPF]
@@ -51,6 +53,8 @@ BEGIN
 		DECLARE @Mensaje VARCHAR(500) = NULL
 			,@IdTipoVehiculoViaje INT
 			,@IdTipoVehiculoOriginal INT
+			,@CampoOriginal VARCHAR(100)
+			,@CampoEnUso BIT = 0
 			,@IdVehiculo INT
 			,@IdTipoVehiculoAsignado INT
 			,@NombreOriginal VARCHAR(100)
@@ -58,22 +62,29 @@ BEGIN
 			,@Permitidos VARCHAR(300);
 
 		SELECT @IdTipoVehiculoViaje = V.IdTipoVehiculo
-			,@IdTipoVehiculoOriginal = NULLIF(V.Int1, 0)
+			,@CampoOriginal = LTRIM(RTRIM(V.Varchar6))
 			,@IdVehiculo = V.IdVehiculo
 		FROM Viaje V
 		WHERE V.IdViaje = @IdViaje
 
-		/* Se guarda el tipo requerido original solo la primera vez (1 = Pendiente de Asignacion) */
-		IF @IdTipoVehiculoOriginal IS NULL
-			AND @IdTipoVehiculoViaje > 1
+		/* Varchar6 guarda el IdTipoVehiculo original como texto (ej. '208') */
+		IF ISNULL(@CampoOriginal, '') = ''
 		BEGIN
-			UPDATE Viaje
-			SET Int1 = @IdTipoVehiculoViaje
-			WHERE IdViaje = @IdViaje
-				AND ISNULL(Int1, 0) = 0
+			/* Vacio: se guarda el tipo actual solo la primera vez (1 = Pendiente de Asignacion) */
+			IF @IdTipoVehiculoViaje > 1
+			BEGIN
+				UPDATE Viaje
+				SET Varchar6 = CONVERT(VARCHAR(10), @IdTipoVehiculoViaje)
+				WHERE IdViaje = @IdViaje
+					AND ISNULL(LTRIM(RTRIM(Varchar6)), '') = ''
 
-			SET @IdTipoVehiculoOriginal = @IdTipoVehiculoViaje
+				SET @IdTipoVehiculoOriginal = @IdTipoVehiculoViaje
+			END
 		END
+		ELSE IF TRY_CONVERT(INT, @CampoOriginal) > 1
+			SET @IdTipoVehiculoOriginal = TRY_CONVERT(INT, @CampoOriginal)
+		ELSE
+			SET @CampoEnUso = 1 /* Varchar6 tiene otro dato: no se modifica ni se valida */
 
 		/* Validacion del vehiculo asignado contra la matriz de asignacion */
 		IF @IdTipoVehiculoOriginal IS NOT NULL
@@ -141,6 +152,8 @@ BEGIN
 			,CASE
 				WHEN ISNULL(@Mensaje, '') <> ''
 					THEN 'Rechazado IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Original=' + Convert(VARCHAR, @IdTipoVehiculoOriginal) + ' Asignado=' + Convert(VARCHAR, @IdTipoVehiculoAsignado)
+				WHEN @CampoEnUso = 1
+					THEN 'Varchar6 con otro dato, no se valida IdViaje=' + Convert(VARCHAR, @IdViaje) + ' Valor=' + LEFT(@CampoOriginal, 30)
 				ELSE 'OK IdViaje=' + Convert(VARCHAR, @IdViaje)
 				END
 			,getutcdate()
