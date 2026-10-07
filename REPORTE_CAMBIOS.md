@@ -15,6 +15,10 @@
 | `Arenas_ActualizarDatosViaje` | `@IdViaje INT` | Modificado | `3242d3e` original · `355c408` regla |
 | `Orden_update_tipoCita` | `@IdOrden BigInt` | **No modificado** | `f4f3030` original |
 
+Además, el informe deja comentarios sobre dos configuraciones de la plataforma que están a nivel general:
+el proceso Id836, vinculado a `Orden_update_tipoCita` (sección 4), y el proceso 376, que invoca
+`SincronizarEstadoRuta_DesdeOrdenes` (sección 5).
+
 Los cambios **no se ejecutaron contra SQL Server** desde este repositorio. Para que rijan hay que ejecutar
 cada `ALTER PROCEDURE` en `UNIGIS_DataRepository_YPF` y probarlos (ver sección 5).
 
@@ -70,7 +74,25 @@ Archivo: `SP/Orden_update_tipoCita.sql` (solo la versión original, sin cambios)
 - **Recomendación:** corregir la configuración del proceso Id836 para acotarla por operación, en lugar de
   modificar el SP.
 
-## 5. Pruebas pendientes (a ejecutar en la base)
+## 5. Proceso 376 — a modificar (no bloqueante)
+
+Proceso de la plataforma que invoca el SP `SincronizarEstadoRuta_DesdeOrdenes`. Ese SP **no está en este
+repositorio y no se modificó**.
+
+- **Id:** 376
+- **Nombre:** `LP|Ruta|Cambia Estado de Ruta desde Ordenes`
+- **SP:** `SincronizarEstadoRuta_DesdeOrdenes`
+- **Entidad:** `Orden`
+- **Condición configurada:** `[Orden.IdOperacion] <> 141`
+
+**Observación:** el proceso está aplicando a **todas las transiciones de todas las operaciones**. La
+condición configurada solo excluye la operación 141; para el resto, el proceso corre en cualquier
+transición.
+
+**Estado:** a modificar (acotarlo por operación y transición), pero **no es bloqueante** para este
+frente. Los demás campos de la configuración del proceso no se interpretan en este informe.
+
+## 6. Pruebas pendientes (a ejecutar en la base)
 
 Para `Z_SP_YPF_SetDatosViaje` y `Arenas_ActualizarDatosViaje`:
 
