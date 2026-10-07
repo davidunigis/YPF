@@ -8,6 +8,13 @@ GO
 ALTER   PROCEDURE [dbo].[Z_SP_YPF_SetDatosViaje] @IdViaje BIGINT
  AS
  BEGIN
+ 	/*
+ 	Modificado: 07/10/2026 - David de la Cruz
+ 	Cambio: se agrega SET NOCOUNT ON y una salida temprana (IF EXISTS ... RETURN 0) para que el SP
+ 	        no se ejecute en viajes cuya jornada pertenece a la operación 141
+ 	        (Viaje.IdJornada -> Jornada.IdOperacion = 141). Para el resto de operaciones
+ 	        el comportamiento no cambia. En viajes de la 141 tampoco se inserta registro en Log.
+ 	*/
  	SET NOCOUNT ON;
 
  	-- Salida inmediata para viajes de la operación 141
