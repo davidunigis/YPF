@@ -67,8 +67,21 @@ IF NOT EXISTS (
 ```
 
 ## SP en alcance
-- [ ] `Z_SP_YPF_SetDatosViaje` — primer SP identificado; aplicar el patrón de salida temprana.
+- [ ] `Z_SP_YPF_SetDatosViaje` — salida temprana aplicada (07/10/2026); pendiente de probar en la base.
+- [ ] `Arenas_ActualizarDatosViaje` — salida temprana aplicada (07/10/2026); pendiente de probar en la base.
+- [x] `Orden_update_tipoCita` — **NO se modifica**. Solo se subió el original. Ver "Hallazgos para el informe".
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
+
+## Hallazgos para el informe
+Se pidió generar un **reporte de cambios** de esta rama (`REPORTE_CAMBIOS.md`); mantenerlo actualizado
+cuando se agreguen más SP.
+
+- Según David de la Cruz, estos SP están implementados **a nivel general para todas las operaciones**
+  y no debería ser así. La salida temprana por operación 141 es la medida acordada para los SP
+  modificados, pero no corrige esa configuración de fondo.
+- `Orden_update_tipoCita` (recibe `@IdOrden`) está vinculado al **proceso Id836**. No se modifica, y el
+  informe debe indicar expresamente que **está mal configurado** (aplica a todas las operaciones).
+  No se sabe aún cómo se relaciona `Orden` con `Viaje`/`Jornada`, por eso tampoco se le aplicó el patrón.
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
