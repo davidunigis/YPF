@@ -82,10 +82,12 @@ cuando se agreguen más SP.
 - `Orden_update_tipoCita` (recibe `@IdOrden`) está vinculado al **proceso Id836**. No se modifica, y el
   informe debe indicar expresamente que **está mal configurado** (aplica a todas las operaciones).
   No se sabe aún cómo se relaciona `Orden` con `Viaje`/`Jornada`, por eso tampoco se le aplicó el patrón.
-- Proceso **376** `LP|Ruta|Cambia Estado de Ruta desde Ordenes` (SP `SincronizarEstadoRuta_DesdeOrdenes`,
+
+## Pendientes por modificar (no bloqueantes)
+- [ ] Proceso **376** `LP|Ruta|Cambia Estado de Ruta desde Ordenes` (SP `SincronizarEstadoRuta_DesdeOrdenes`,
   entidad `Orden`, condición `[Orden.IdOperacion] <> 141`): según David de la Cruz aplica a **todas las
-  transiciones de todas las operaciones**. Está **a modificar, pero no es bloqueante**. Va comentado en el
-  informe (sección 5). El SP no está en el repo y no se modifica.
+  transiciones de todas las operaciones**. Va comentado en el informe (sección 5). El SP no está en el
+  repo y no se modifica por ahora.
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
