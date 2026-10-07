@@ -8,6 +8,18 @@ GO
 ALTER   PROCEDURE [dbo].[Z_SP_YPF_SetDatosViaje] @IdViaje BIGINT
  AS
  BEGIN
+ 	SET NOCOUNT ON;
+
+ 	-- Salida inmediata para viajes de la operación 141
+ 	IF EXISTS (
+ 			SELECT 1
+ 			FROM Viaje
+ 			JOIN Jornada ON Viaje.IdJornada = Jornada.IdJornada
+ 			WHERE Viaje.IdViaje = @IdViaje
+ 				AND Jornada.IdOperacion = 141
+ 			)
+ 		RETURN 0;
+
  	BEGIN TRY
  		DECLARE @sql AS NVARCHAR(MAX),
  			@IdOperacion INT
