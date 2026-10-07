@@ -84,6 +84,7 @@ IF NOT EXISTS (
 - [ ] `Z_SP_YPF_SetDatosViaje` — salida temprana aplicada (07/10/2026); pendiente de probar en la base.
 - [ ] `Arenas_ActualizarDatosViaje` — salida temprana aplicada (07/10/2026); pendiente de probar en la base.
 - [ ] `Z_SP_YPF_TransicionesOrden` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 352.
+- [ ] `Z_SP_YPF_SetDatosOT` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 351.
 - [x] `Orden_update_tipoCita` — **NO se modifica**. Solo se subió el original. Ver "Hallazgos para el informe".
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 
@@ -101,6 +102,10 @@ cuando se agreguen más SP.
   (entidad `Orden`, condición `[Orden.IdOperacion] <> 141`, `TodasLasTransiciones = 1`, `IdOperacion` NULL).
   El proceso ya excluye la 141 por condición y aplica a todas las transiciones; la salida temprana en el SP
   es una segunda validación. Va comentado en el informe (3.3).
+- `Z_SP_YPF_SetDatosOT` está ligado al proceso **351** `LP|OT|Actualiza Datos en Creacion` (entidad `Orden`,
+  condición `[Orden.IdOperacion] <> 141`, `TodasLasTransiciones = 0`, `IdTransicion = 0`, `IdOperacion` NULL,
+  `ContinueWith = 653`). El proceso ya excluye la 141 por condición; la salida temprana en el SP es una
+  segunda validación. Va comentado en el informe (3.4).
 
 ## Pendientes por modificar (no bloqueantes)
 - [ ] Proceso **376** `LP|Ruta|Cambia Estado de Ruta desde Ordenes` (SP `SincronizarEstadoRuta_DesdeOrdenes`,

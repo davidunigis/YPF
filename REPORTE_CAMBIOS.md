@@ -14,10 +14,12 @@
 | `Z_SP_YPF_SetDatosViaje` | `@IdViaje BIGINT` | Modificado | `e27e41e` original · `a7a52b9` regla · `1daf441` comentario |
 | `Arenas_ActualizarDatosViaje` | `@IdViaje INT` | Modificado | `3242d3e` original · `355c408` regla |
 | `Z_SP_YPF_TransicionesOrden` | `@IdOrden BIGINT` | Modificado | `3ea8a10` original · `4d1f7f2` regla y comentario |
+| `Z_SP_YPF_SetDatosOT` | `@IdOrden BigInt` | Modificado | `028aa50` original · `82fe504` regla y comentario |
 | `Orden_update_tipoCita` | `@IdOrden BigInt` | **No modificado** | `f4f3030` original |
 
-Además, el informe deja comentarios sobre dos configuraciones de la plataforma que están a nivel general:
-el proceso Id836, vinculado a `Orden_update_tipoCita` (sección 4), y el proceso 376, que invoca
+Además, el informe documenta los procesos de la plataforma ligados a los SP modificados (el 352 en la
+sección 3.3 y el 351 en la 3.4) y deja comentarios sobre dos configuraciones a nivel general: el proceso
+Id836, vinculado a `Orden_update_tipoCita` (sección 4), y el proceso 376, que invoca
 `SincronizarEstadoRuta_DesdeOrdenes`. Este último queda en **pendientes por modificar** (sección 5).
 
 Los cambios **no se ejecutaron contra SQL Server** desde este repositorio. Para que rijan hay que ejecutar
@@ -87,7 +89,39 @@ fuera a la 141 mediante su condición dinámica. Esto coincide con la observaci�
 condición del proceso ya excluye la 141; la salida temprana dentro del SP es una segunda validación,
 independiente de la configuración del proceso.
 
-Detalles comunes del patrón (aplican a los tres SP modificados): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
+### 3.4 `Z_SP_YPF_SetDatosOT`
+
+Archivo: `SP/Z_SP_YPF_SetDatosOT.sql`
+
+- Recibe `@IdOrden`, así que la validación se hace directo sobre `Orden.IdOperacion`. Se agregó antes del
+  `Begin Try`, con el estilo de escritura propio de este SP:
+  - `Set NoCount On;`
+  - `If Exists (Select 1 From Orden With(NoLock) Where IdOrden = @IdOrden And IdOperacion = 141) Return 0;`
+- Se agregó un comentario dentro del SP con fecha y autor (07/10/2026, David de la Cruz).
+- La lógica original no cambió.
+- **Efecto en la 141:** no ejecuta nada. No se asigna el depósito de salida, no se completan domicilios ni
+  campos dinámicos (UDT, CECOS, `NegocioComex`), no se pasan a estado de revisión los `OrdenItem`
+  (estado 4) ni la `Orden` (estado 61), no se cargan elementos requeridos ni tipo de vehículo sugerido, no
+  se ajusta `FechaEntrega`, no se actualiza línea/sublínea de `Producto` y no se inserta registro en `Log`.
+- **Efecto en el resto:** sin cambios.
+
+**Proceso vinculado: 351** — `LP|OT|Actualiza Datos en Creacion`
+
+- **Entidad:** `Orden`
+- **SQL que ejecuta:** `EXEC Z_SP_YPF_SetDatosOT [Orden.IdOrden]`
+- **Condición dinámica:** `[Orden.IdOperacion] <> 141`
+- **Todas las transiciones:** no (`TodasLasTransiciones = 0`, `IdTransicion = 0`)
+- **Operación del proceso:** NULL (`IdOperacion`); no está ligado a una operación específica
+- **ContinueWith:** 653
+- **Otros valores:** Pre 0 · Post 1 · Distribuido 0 · Sincrónico 1 · Transaccional 0 · ReloadEntity 1
+
+**Observación:** a diferencia de los procesos 352 y 376, este no está configurado para todas las
+transiciones (`TodasLasTransiciones = 0`), pero tampoco está acotado a una operación; solo deja fuera a la
+141 mediante su condición dinámica. La condición del proceso ya excluye la 141; la salida temprana dentro
+del SP es una segunda validación, independiente de la configuración del proceso. El proceso encadena con el
+proceso 653 (`ContinueWith`), cuya definición no forma parte de este informe.
+
+Detalles comunes del patrón (aplican a los cuatro SP modificados): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
 registre un error) y `= 141` dentro de un `EXISTS` (no `!= 141`), así los viajes con `IdOperacion` NULL
 siguen ejecutándose.
 
@@ -143,5 +177,13 @@ Para `Z_SP_YPF_TransicionesOrden`:
 | Caso | Resultado esperado |
 |---|---|
 | Orden con `IdOperacion = 141` | No cambia nada (ni `Pack`, ni `Z_SP_YPF_SyncPedidoPack`), no da error y no inserta en `Log`. |
+| Orden de otra operación | Se comporta igual que antes del cambio. |
+| Orden con `IdOperacion` NULL | Se sigue ejecutando como antes. |
+
+Para `Z_SP_YPF_SetDatosOT`:
+
+| Caso | Resultado esperado |
+|---|---|
+| Orden con `IdOperacion = 141` | No cambia nada (depósito, domicilios, campos dinámicos, estados, etc.), no da error y no inserta en `Log`. |
 | Orden de otra operación | Se comporta igual que antes del cambio. |
 | Orden con `IdOperacion` NULL | Se sigue ejecutando como antes. |
