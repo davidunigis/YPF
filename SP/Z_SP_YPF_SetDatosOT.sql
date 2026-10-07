@@ -7,6 +7,24 @@ SET QUOTED_IDENTIFIER ON
 GO
 ALTER Procedure [dbo].[Z_SP_YPF_SetDatosOT] @IdOrden BigInt 
 As Begin   
+/*
+Modificado: 07/10/2026 - David de la Cruz
+Cambio: se agrega Set NoCount On y una salida temprana (If Exists ... Return 0) para que el SP
+        no se ejecute en órdenes de la operación 141 (Orden.IdOperacion = 141).
+        Para el resto de operaciones el comportamiento no cambia.
+        En órdenes de la 141 tampoco se inserta registro en Log.
+*/
+Set NoCount On;
+
+-- Salida inmediata para órdenes de la operación 141
+If Exists (
+		Select 1
+		From Orden With(NoLock)
+		Where IdOrden = @IdOrden
+			And IdOperacion = 141
+		)
+	Return 0;
+
 Begin Try
 
 If IsNull((Select 1 From Orden With(NoLock) Where IdTipoOrden In (Select IdTipoOrden From TipoOrden Where Nivel = 0) And IdOrden = @IdOrden), 0) <> 1
