@@ -8,6 +8,24 @@ GO
 ALTER PROCEDURE [dbo].[Z_SP_YPF_TransicionesOrden] @IdOrden BIGINT
  AS
  BEGIN
+ 	/*
+ 	Modificado: 07/10/2026 - David de la Cruz
+ 	Cambio: se agrega SET NOCOUNT ON y una salida temprana (IF EXISTS ... RETURN 0) para que el SP
+ 	        no se ejecute en órdenes de la operación 141 (Orden.IdOperacion = 141).
+ 	        Para el resto de operaciones el comportamiento no cambia.
+ 	        En órdenes de la 141 tampoco se inserta registro en Log.
+ 	*/
+ 	SET NOCOUNT ON;
+
+ 	-- Salida inmediata para órdenes de la operación 141
+ 	IF EXISTS (
+ 			SELECT 1
+ 			FROM Orden WITH (NOLOCK)
+ 			WHERE IdOrden = @IdOrden
+ 				AND IdOperacion = 141
+ 			)
+ 		RETURN 0;
+
  	BEGIN TRY
  		DECLARE @IdTipoOrden INT
  			,@IdEstadoOrden INT
