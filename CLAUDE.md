@@ -86,6 +86,7 @@ IF NOT EXISTS (
 - [ ] `Z_SP_YPF_TransicionesOrden` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 352.
 - [ ] `Z_SP_YPF_SetDatosOT` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 351.
 - [ ] `Z_SP_YPF_SetDatosOTUM` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 653 (se detona desde el 351).
+- [ ] `Z_SP_YPF_SetDatosOrden` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 300 (cadena 300 → 351 → 653).
 - [x] `Orden_update_tipoCita` — **NO se modifica**. Solo se subió el original. Ver "Hallazgos para el informe".
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 
@@ -111,6 +112,10 @@ cuando se agreguen más SP.
   condición `[Orden.IdOperacion] <> 141`, `TodasLasTransiciones = 0`, `IdOperacion` NULL), que se detona
   desde el proceso 351. El SP solo trabaja con las operaciones 7 a 14, pero el proceso no está acotado a
   ellas. Va comentado en el informe (3.5).
+- `Z_SP_YPF_SetDatosOrden` está ligado al proceso **300** `LP|Orden|Actualiza Categoria Orden` (entidad `Orden`,
+  condición `[Orden.IdOperacion] <> 141`, `TodasLasTransiciones = 0`, `IdTransicion = 0`, `IdOperacion` NULL,
+  `ContinueWith = 351`). Forma la cadena de procesos 300 → 351 → 653, todos con la condición `<> 141` y sin
+  operación específica. Va comentado en el informe (3.6).
 
 ## Pendientes por modificar (no bloqueantes)
 - [ ] Proceso **376** `LP|Ruta|Cambia Estado de Ruta desde Ordenes` (SP `SincronizarEstadoRuta_DesdeOrdenes`,
