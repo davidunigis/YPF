@@ -16,11 +16,32 @@ GO
 -- 30-11-2023  Se suma actualizacion codigo producto por error en carga 
 --			   de archivos manuales por cliente ypf				 
 ----------------------------------------------------------------------------------
+-- 07-10-2026  Se agrega salida temprana para ordenes de la operacion 141
+--			   (Orden.IdOperacion = 141): no se ejecuta el SP ni se inserta Log.	David de la Cruz
+----------------------------------------------------------------------------------
 -- Parametros : Se debe recibir el IdOrden
 -- ==========================================================================================
 ALTER Procedure [dbo].[Z_SP_YPF_SetDatosOrden] @IdOrden BigInt
 As
 Begin 
+/*
+Modificado: 07/10/2026 - David de la Cruz
+Cambio: se agrega Set NoCount On y una salida temprana (If Exists ... Return 0) para que el SP
+        no se ejecute en órdenes de la operación 141 (Orden.IdOperacion = 141).
+        Para el resto de operaciones el comportamiento no cambia.
+        En órdenes de la 141 tampoco se inserta registro en Log.
+*/
+Set NoCount On;
+
+-- Salida inmediata para órdenes de la operación 141
+If Exists (
+		Select 1
+		From Orden With(NoLock)
+		Where IdOrden = @IdOrden
+			And IdOperacion = 141
+		)
+	Return 0;
+
 Begin Try
 
 
