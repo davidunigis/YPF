@@ -13,6 +13,7 @@
 |---|---|---|---|
 | `Z_SP_YPF_SetDatosViaje` | `@IdViaje BIGINT` | Modificado | `e27e41e` original · `a7a52b9` regla · `1daf441` comentario |
 | `Arenas_ActualizarDatosViaje` | `@IdViaje INT` | Modificado | `3242d3e` original · `355c408` regla |
+| `Z_SP_YPF_TransicionesOrden` | `@IdOrden BIGINT` | Modificado | `3ea8a10` original · `4d1f7f2` regla y comentario |
 | `Orden_update_tipoCita` | `@IdOrden BigInt` | **No modificado** | `f4f3030` original |
 
 Además, el informe deja comentarios sobre dos configuraciones de la plataforma que están a nivel general:
@@ -56,7 +57,23 @@ Archivo: `SP/Arenas_ActualizarDatosViaje.sql`
   `Origen` ni `Peso`. Si algo depende de que se llenen en la 141, hay que cubrirlo por otro lado.
 - **Efecto en el resto:** sin cambios.
 
-Detalles comunes del patrón: se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
+### 3.3 `Z_SP_YPF_TransicionesOrden`
+
+Archivo: `SP/Z_SP_YPF_TransicionesOrden.sql`
+
+- Este SP recibe `@IdOrden`, así que la validación se hace directo sobre `Orden.IdOperacion` (no pasa por
+  `Viaje`/`Jornada`). Se agregó como primera instrucción, antes del `BEGIN TRY`:
+  - `SET NOCOUNT ON;`
+  - `IF EXISTS (SELECT 1 FROM Orden WITH (NOLOCK) WHERE IdOrden = @IdOrden AND IdOperacion = 141) RETURN 0;`
+- Se agregó un comentario dentro del SP con fecha y autor (07/10/2026, David de la Cruz).
+- La lógica original no cambió.
+- **Efecto en la 141:** no ejecuta nada. No se actualiza `Pack.IdEstadoPack`, no se llama a
+  `Z_SP_YPF_SyncPedidoPack` y no se inserta registro en `Log` (antes se insertaba `'OK IdOrden=...'`).
+- **Efecto en el resto:** sin cambios.
+- Nota: el script original llegó en una sola línea; para el commit "original" se restauraron los saltos de
+  línea según su indentación, sin modificar ninguna instrucción.
+
+Detalles comunes del patrón (aplican a los tres SP modificados): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
 registre un error) y `= 141` dentro de un `EXISTS` (no `!= 141`), así los viajes con `IdOperacion` NULL
 siguen ejecutándose.
 
@@ -69,8 +86,7 @@ Archivo: `SP/Orden_update_tipoCita.sql` (solo la versión original, sin cambios)
   operaciones y no debería ser así.
 - El SP no tiene ningún filtro por operación: actualiza `Orden.IdTipoCita` a `13` (si `Tipo = 'D'`) o a
   `14` (si `Tipo = 'P'`) cuando `IdDepositoLlegada = 17`, para cualquier orden que reciba.
-- **No se modifica.** Además, recibe `@IdOrden` y no `@IdViaje`, y no está confirmado cómo se relaciona
-  `Orden` con `Viaje`/`Jornada`, por lo que el patrón de la operación 141 no se le aplicó.
+- **No se modifica**, y el patrón de la operación 141 no se le aplicó.
 - **Recomendación:** corregir la configuración del proceso Id836 para acotarla por operación, en lugar de
   modificar el SP.
 
@@ -105,3 +121,11 @@ Para `Z_SP_YPF_SetDatosViaje` y `Arenas_ActualizarDatosViaje`:
 | Viaje de la operación 141 | No cambia nada, no devuelve resultados, no da error. `SetDatosViaje` no inserta en `Log`. |
 | Viaje de otra operación | Se comporta igual que antes del cambio. |
 | Viaje cuya jornada tiene `IdOperacion` NULL | Se sigue ejecutando como antes. |
+
+Para `Z_SP_YPF_TransicionesOrden`:
+
+| Caso | Resultado esperado |
+|---|---|
+| Orden con `IdOperacion = 141` | No cambia nada (ni `Pack`, ni `Z_SP_YPF_SyncPedidoPack`), no da error y no inserta en `Log`. |
+| Orden de otra operación | Se comporta igual que antes del cambio. |
+| Orden con `IdOperacion` NULL | Se sigue ejecutando como antes. |

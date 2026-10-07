@@ -48,6 +48,20 @@ Reglas del patrón:
 - Si la condición solo puede evaluarse a mitad del SP, después de hacer cambios, envolver el
   cuerpo en transacción y hacer `ROLLBACK` antes del `RETURN`.
 
+### Variante para SP que reciben `@IdOrden`
+
+`Orden` tiene `IdOperacion` propio, así que no hace falta pasar por `Viaje`/`Jornada`:
+
+```sql
+IF EXISTS (
+    SELECT 1
+    FROM Orden WITH (NOLOCK)
+    WHERE IdOrden = @IdOrden
+      AND IdOperacion = 141
+)
+    RETURN 0;
+```
+
 ### Alternativa desde la llamada en la plataforma
 
 En la configuración de UNIGIS el SP se invoca con el placeholder `[Viaje.IdViaje]`, que la
@@ -69,6 +83,7 @@ IF NOT EXISTS (
 ## SP en alcance
 - [ ] `Z_SP_YPF_SetDatosViaje` — salida temprana aplicada (07/10/2026); pendiente de probar en la base.
 - [ ] `Arenas_ActualizarDatosViaje` — salida temprana aplicada (07/10/2026); pendiente de probar en la base.
+- [ ] `Z_SP_YPF_TransicionesOrden` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base.
 - [x] `Orden_update_tipoCita` — **NO se modifica**. Solo se subió el original. Ver "Hallazgos para el informe".
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 
@@ -81,7 +96,7 @@ cuando se agreguen más SP.
   modificados, pero no corrige esa configuración de fondo.
 - `Orden_update_tipoCita` (recibe `@IdOrden`) está vinculado al **proceso Id836**. No se modifica, y el
   informe debe indicar expresamente que **está mal configurado** (aplica a todas las operaciones).
-  No se sabe aún cómo se relaciona `Orden` con `Viaje`/`Jornada`, por eso tampoco se le aplicó el patrón.
+  Tampoco se le aplicó el patrón.
 
 ## Pendientes por modificar (no bloqueantes)
 - [ ] Proceso **376** `LP|Ruta|Cambia Estado de Ruta desde Ordenes` (SP `SincronizarEstadoRuta_DesdeOrdenes`,
