@@ -73,6 +73,20 @@ Archivo: `SP/Z_SP_YPF_TransicionesOrden.sql`
 - Nota: el script original llegó en una sola línea; para el commit "original" se restauraron los saltos de
   línea según su indentación, sin modificar ninguna instrucción.
 
+**Proceso vinculado: 352** — `LP|Pedido|Actualiza estado segun estados de pack`
+
+- **Entidad:** `Orden`
+- **SQL que ejecuta:** `Z_SP_YPF_TransicionesOrden [Orden.IdOrden]`
+- **Condición dinámica:** `[Orden.IdOperacion] <> 141`
+- **Todas las transiciones:** sí (`TodasLasTransiciones = 1`, `IdTransicion` NULL)
+- **Operación del proceso:** NULL (`IdOperacion`); no está ligado a una operación específica
+- **Otros valores:** Pre 0 · Post 1 · Distribuido 1 · Sincrónico 0 · Transaccional 0 · ReloadEntity 1
+
+**Observación:** el proceso aplica a todas las transiciones y no está acotado a una operación; solo deja
+fuera a la 141 mediante su condición dinámica. Esto coincide con la observación general de la sección 2. La
+condición del proceso ya excluye la 141; la salida temprana dentro del SP es una segunda validación,
+independiente de la configuración del proceso.
+
 Detalles comunes del patrón (aplican a los tres SP modificados): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
 registre un error) y `= 141` dentro de un `EXISTS` (no `!= 141`), así los viajes con `IdOperacion` NULL
 siguen ejecutándose.
@@ -104,6 +118,8 @@ repositorio y no se modificó**.
 - **SP:** `SincronizarEstadoRuta_DesdeOrdenes`
 - **Entidad:** `Orden`
 - **Condición configurada:** `[Orden.IdOperacion] <> 141`
+- **Parámetros:** `70|2|1`
+- **Todas las transiciones:** sí (`TodasLasTransiciones = 1`, `IdTransicion` NULL)
 
 **Observación:** el proceso está aplicando a **todas las transiciones de todas las operaciones**. La
 condición configurada solo excluye la operación 141; para el resto, el proceso corre en cualquier
