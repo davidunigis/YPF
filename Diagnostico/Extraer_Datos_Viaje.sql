@@ -344,7 +344,7 @@ BEGIN TRY
     INSERT INTO #Salida (Seccion, Parte, Dato)
     SELECT 'EVENTOS_RESUMEN', 1,
            (SELECT COUNT(*) AS TotalVentana,
-                   SUM(CASE WHEN CAST(E.Valido AS VARCHAR(10)) = 'True' THEN 1 ELSE 0 END) AS ValidosTrue,
+                   SUM(CASE WHEN E.Valido = 'True' THEN 1 ELSE 0 END) AS ValidosTrue,
                    MIN(E.IdEvento) AS MinIdEvento, MAX(E.IdEvento) AS MaxIdEvento,
                    CONVERT(VARCHAR(19), MIN(E.FechaHoraEvento), 120) AS PrimerEvento_UTC,
                    CONVERT(VARCHAR(19), MAX(E.FechaHoraEvento), 120) AS UltimoEvento_UTC

@@ -133,6 +133,16 @@ y en **Novedades y Alertas Última Milla**.
 5. El tiempo en la geocerca de planta agrupa Espera + Carga (GPS no distingue los estados del basculero),
    que es justo lo que el documento suma para la tolerancia.
 
+## Hallazgos del viaje 329958 (ver `Diagnostico/Analisis_Viaje_329958.md`)
+Verificado con datos reales: el SP desplegado = repo, y una réplica en Python reproduce `Z_ItinerarioViaje`.
+Pendientes por orden de impacto (ninguno corregido todavía):
+1. Espera en la puerta del destino (2–8 m fuera de la geocerca) = `DETENIDO` → Transporte; con margen ≥ 10 m sería `DESCARGA` → YPF.
+2. El SP descarta eventos con `IdEvento > IdEventoFinalizacion` aunque su hora esté en la ventana (147 de 388 en este viaje).
+3. Origen sin `CARGA`: visitas fugaces a una geocerca de 10 puntos.
+4. `VelocidadPromedio` mal en filas fusionadas (el PASO 7 no recalcula `VelProm`).
+5. `KmTeoricos`/`CicloKmTeoricos` truncados a `INT` (130,08 → 130).
+6. Pasar por una estación de servicio sin detenerse consume la excepción diaria de combustible.
+
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
   y luego el cambio en otro commit, para que el diff muestre solo lo agregado.
