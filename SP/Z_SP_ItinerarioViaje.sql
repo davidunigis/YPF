@@ -10,12 +10,16 @@ ALTER PROCEDURE [dbo].[Z_SP_ItinerarioViaje]
 (
     @IdViaje                INT,
     @VelocidadDetenido      DECIMAL(6,2) = 0,   -- "velocidad = 0" del requerimiento
-    @MinutosDetenido        INT          = 5,   -- mas de 5 min detenido = novedad
+    @MinutosDetenido        INT          = 15,  -- mas de 15 min detenido fuera de geocerca = detenido registrable (To Be v3)
     @MinutosCombustible     INT          = 30,  -- excepcion en estacion de servicio
     @MinutosTolerancia      INT          = 45,  -- tolerancia en carga y descarga
     @MinutosMinPermanencia  INT          = 2,   -- minimo en geocerca para contar visita
     @OffsetHoras            INT          = -3,
-    @Debug                  BIT          = 0
+    @Debug                  BIT          = 0,
+    @MinutosToleranciaOrigen  INT        = NULL, -- NULL = usa @MinutosTolerancia
+    @MinutosToleranciaDestino INT        = NULL, -- NULL = usa @MinutosTolerancia
+    @MinutosTurno           INT          = 30,  -- cambio de turno: suma maxima de detenidos tolerada en el rango
+    @TurnoSoloExceso        BIT          = 0    -- 0: superado el limite se registra todo; 1: solo el exceso
 )
 AS
 BEGIN
@@ -24,6 +28,8 @@ BEGIN
     IF OBJECT_ID('tempdb..#Zonas')   IS NOT NULL DROP TABLE #Zonas;
     IF OBJECT_ID('tempdb..#Eventos') IS NOT NULL DROP TABLE #Eventos;
     IF OBJECT_ID('tempdb..#Tramos')  IS NOT NULL DROP TABLE #Tramos;
+    IF OBJECT_ID('tempdb..#Ventanas') IS NOT NULL DROP TABLE #Ventanas;
+    IF OBJECT_ID('tempdb..#TurnoDet') IS NOT NULL DROP TABLE #TurnoDet;
 
     INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
     VALUES ('INICIO', 'Z_SP_ItinerarioViaje | IdViaje: ' + CAST(@IdViaje AS VARCHAR(10)), GETDATE());
@@ -38,7 +44,8 @@ BEGIN
             @FechaIni DATETIME, @FechaFin DATETIME,
             @KmTeoricos INT, @TiempoEstandar DECIMAL(10,2), @CicloKmTeoricos INT,
             @KmViaje DECIMAL(12,2), @MinutosViaje INT,
-            @FinUltimaOperacion DATETIME;
+            @FinUltimaOperacion DATETIME,
+            @IdTransporte INT, @TolOrigen INT, @TolDestino INT;
 
     SELECT
         @IdVehiculo       = V.IdVehiculo,
@@ -48,7 +55,8 @@ BEGIN
         @IdDibujoOrigen   = D.IdDibujo,
         @Origen           = D.Descripcion,
         @IdEventoIni      = V.IdEventoActivacion,
-        @IdEventoFin      = V.IdEventoFinalizacion
+        @IdEventoFin      = V.IdEventoFinalizacion,
+        @IdTransporte     = Veh.IdTransporte
     FROM       dbo.Viaje    V   WITH (NOLOCK)
     INNER JOIN dbo.Vehiculo Veh WITH (NOLOCK) ON Veh.IdVehiculo = V.IdVehiculo
     LEFT  JOIN dbo.Deposito D   WITH (NOLOCK) ON D.IdDeposito   = V.IdDepositoSalida
@@ -60,6 +68,10 @@ BEGIN
         VALUES ('ERROR', 'Viaje ' + CAST(@IdViaje AS VARCHAR(10)) + ' no encontrado.', GETDATE());
         RETURN;
     END;
+
+    /* Tolerancia definida en origen y en destino (To Be v3); por defecto la general */
+    SET @TolOrigen  = ISNULL(@MinutosToleranciaOrigen,  @MinutosTolerancia);
+    SET @TolDestino = ISNULL(@MinutosToleranciaDestino, @MinutosTolerancia);
 
     SELECT TOP 1 @IdDibujoDestino = C.IdDibujo, @Destino = C.Descripcion
     FROM dbo.Z_ClasificarParadasViaje(@IdViaje) C
@@ -297,7 +309,12 @@ BEGIN
         CAST(AVG(E.Velocidad)   AS DECIMAL(10,2))       AS VelProm,
         CAST(MAX(E.Velocidad)   AS DECIMAL(10,2))       AS VelMax,
         CAST(0 AS BIT)                                  AS AplicoExcepcion,
-        CAST(NULL AS INT)                               AS Minutos
+        CAST(NULL AS INT)                               AS Minutos,
+        CAST(NULL AS INT)                               AS ToleranciaMin,
+        CAST(NULL AS VARCHAR(12))                       AS Responsable,
+        CAST(0 AS INT)                                  AS MinutosDemora,
+        CAST(0 AS INT)                                  AS MinutosExentos,
+        CAST(NULL AS VARCHAR(20))                       AS MotivoExencion
     INTO #Tramos
     FROM #Eventos E
     GROUP BY E.Grupo, E.Novedad, E.ClaseZona, E.IdDibujoZona, E.NombreZona, E.IdParada;
@@ -417,6 +434,139 @@ BEGIN
           AND T2.FechaHasta >= T.FechaHasta
     );
 
+    /*==========================================================================
+      PASO 7.e - Imputacion de demoras por responsabilidad
+      Documento To Be v3 - Certificacion Ultima Milla, Modulo II.
+      No cambia las novedades de arriba: solo completa Responsable, MinutosDemora,
+      MinutosExentos y MotivoExencion en cada tramo.
+        YPF        : exceso sobre la tolerancia de origen (CARGA) o de destino
+                     (DESCARGA), por parada. Se imputa en el ultimo tramo de la
+                     parada para que SUM(MinutosDemora) no cuente doble.
+        TRANSPORTE : detenidos registrables (DETENIDO) menos lo exento.
+        Sin demora : combustible dentro de la excepcion, carreteando, retorno y
+                     espera sin tarea.
+    ==========================================================================*/
+
+    /* 7.e.1  YPF: exceso sobre la tolerancia, por parada */
+    UPDATE #Tramos
+        SET ToleranciaMin = CASE Novedad WHEN 'CARGA' THEN @TolOrigen ELSE @TolDestino END
+    WHERE Novedad IN ('CARGA', 'DESCARGA');
+
+    ;WITH Par AS (
+        SELECT Orden, ToleranciaMin,
+               SUM(Minutos) OVER (PARTITION BY Novedad, IdDibujoZona)                        AS MinParada,
+               ROW_NUMBER() OVER (PARTITION BY Novedad, IdDibujoZona ORDER BY Orden DESC)    AS RnUlt
+        FROM #Tramos
+        WHERE Novedad IN ('CARGA', 'DESCARGA')
+    )
+    UPDATE T
+        SET T.Responsable   = CASE WHEN P.MinParada > P.ToleranciaMin THEN 'YPF' END,
+            T.MinutosDemora = CASE WHEN P.RnUlt = 1 AND P.MinParada > P.ToleranciaMin
+                                   THEN P.MinParada - P.ToleranciaMin ELSE 0 END
+    FROM #Tramos T INNER JOIN Par P ON P.Orden = T.Orden;
+
+    /* 7.e.2  Combustible dentro de la excepcion: no se registra detenido */
+    UPDATE #Tramos
+        SET MinutosExentos = Minutos,
+            MotivoExencion = 'COMBUSTIBLE'
+    WHERE Novedad = 'COMBUSTIBLE'
+      AND AplicoExcepcion = 1;
+
+    /* 7.e.3  Detenidos: responsabilidad del transporte */
+    UPDATE #Tramos
+        SET Responsable   = 'TRANSPORTE',
+            MinutosDemora = Minutos
+    WHERE Novedad = 'DETENIDO';
+
+    /* 7.e.4  EXCEPCION CAMBIO DE TURNO
+            Cada transportista tiene rangos horarios de cambio de turno
+            (dbo.Z_CambioTurnoTransporte, hora local). Dentro de cada rango se
+            suman los minutos de detenidos: si la suma no supera @MinutosTurno no
+            se registra ninguno. Si la supera, se registra todo (@TurnoSoloExceso = 0)
+            o solo lo que pasa del limite (@TurnoSoloExceso = 1). Un detenido que
+            cruza el borde del rango aporta solo los minutos que caen dentro.
+            Sin rangos activos para el transportista, la excepcion no aplica. */
+    IF @IdTransporte IS NOT NULL
+       AND EXISTS (SELECT 1 FROM #Tramos WHERE Novedad = 'DETENIDO' AND MinutosDemora > 0)
+       AND EXISTS (SELECT 1 FROM dbo.Z_CambioTurnoTransporte WITH (NOLOCK)
+                   WHERE IdTransporte = @IdTransporte AND Activo = 1)
+    BEGIN
+        DECLARE @DiaIni DATE, @DiaFin DATE;
+        SELECT @DiaIni = CAST(DATEADD(HOUR, @OffsetHoras, MIN(FechaDesde)) AS DATE),
+               @DiaFin = CAST(DATEADD(HOUR, @OffsetHoras, MAX(FechaHasta)) AS DATE)
+        FROM #Tramos;
+
+        CREATE TABLE #Ventanas (IdVentana INT IDENTITY(1,1) PRIMARY KEY,
+                                Desde DATETIME NOT NULL, Hasta DATETIME NOT NULL);
+        CREATE TABLE #TurnoDet (Orden INT NOT NULL, IdVentana INT NOT NULL,
+                                FechaDesde DATETIME NOT NULL, Solap INT NOT NULL);
+
+        /* Un rango por dia del viaje (desde el dia anterior, por si cruza la medianoche) */
+        ;WITH Dias AS (
+            SELECT TOP (DATEDIFF(DAY, @DiaIni, @DiaFin) + 2)
+                   DATEADD(DAY, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) - 2, @DiaIni) AS Dia
+            FROM sys.all_objects
+        )
+        INSERT INTO #Ventanas (Desde, Hasta)
+        SELECT W.Desde, DATEADD(MINUTE, CT.DuracionMinutos, W.Desde)
+        FROM Dias D
+        INNER JOIN dbo.Z_CambioTurnoTransporte CT WITH (NOLOCK)
+                ON CT.IdTransporte = @IdTransporte AND CT.Activo = 1
+        CROSS APPLY (SELECT DATEADD(MINUTE, DATEDIFF(MINUTE, CAST('00:00' AS TIME), CT.HoraDesde),
+                                    CAST(D.Dia AS DATETIME)) AS Desde) W;
+
+        /* Minutos de cada detenido que caen dentro de cada rango (hora local) */
+        INSERT INTO #TurnoDet (Orden, IdVentana, FechaDesde, Solap)
+        SELECT T.Orden, V.IdVentana, T.FechaDesde, DATEDIFF(MINUTE, X.Ini, X.Fin)
+        FROM #Tramos T
+        CROSS APPLY (SELECT DATEADD(HOUR, @OffsetHoras, T.FechaDesde) AS Desde,
+                            DATEADD(HOUR, @OffsetHoras, T.FechaHasta) AS Hasta) L
+        INNER JOIN #Ventanas V ON L.Desde < V.Hasta AND L.Hasta > V.Desde
+        CROSS APPLY (SELECT CASE WHEN L.Desde > V.Desde THEN L.Desde ELSE V.Desde END AS Ini,
+                            CASE WHEN L.Hasta < V.Hasta THEN L.Hasta ELSE V.Hasta END AS Fin) X
+        WHERE T.Novedad = 'DETENIDO'
+          AND T.MinutosDemora > 0;
+
+        ;WITH Acum AS (
+            SELECT Orden, Solap,
+                   SUM(Solap) OVER (PARTITION BY IdVentana) AS SumaVentana,
+                   ISNULL(SUM(Solap) OVER (PARTITION BY IdVentana ORDER BY FechaDesde, Orden
+                                           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS Previo
+            FROM #TurnoDet
+        ),
+        Ex AS (
+            SELECT Orden,
+                   SUM(CASE
+                           WHEN @TurnoSoloExceso = 1
+                           THEN CASE WHEN @MinutosTurno - Previo <= 0     THEN 0
+                                     WHEN Solap < @MinutosTurno - Previo  THEN Solap
+                                     ELSE @MinutosTurno - Previo END
+                           WHEN SumaVentana <= @MinutosTurno THEN Solap
+                           ELSE 0
+                       END) AS Exento
+            FROM Acum
+            GROUP BY Orden
+        )
+        UPDATE T
+            SET T.MinutosExentos = CASE WHEN E.Exento > T.MinutosDemora THEN T.MinutosDemora ELSE E.Exento END
+        FROM #Tramos T INNER JOIN Ex E ON E.Orden = T.Orden;
+
+        UPDATE #Tramos
+            SET MinutosDemora  = MinutosDemora - MinutosExentos,
+                MotivoExencion = 'CAMBIO_TURNO'
+        WHERE Novedad = 'DETENIDO'
+          AND MinutosExentos > 0;
+    END;
+
+    /* Un detenido totalmente exento ya no es demora de nadie */
+    UPDATE #Tramos SET Responsable = NULL WHERE Novedad = 'DETENIDO' AND MinutosDemora <= 0;
+
+    INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
+    VALUES ('PASO7E', 'Demoras | YPF min: ' + CAST((SELECT ISNULL(SUM(MinutosDemora), 0) FROM #Tramos WHERE Responsable = 'YPF') AS VARCHAR(10)) +
+            ' | Transporte min: ' + CAST((SELECT ISNULL(SUM(MinutosDemora), 0) FROM #Tramos WHERE Responsable = 'TRANSPORTE') AS VARCHAR(10)) +
+            ' | Exentos min: '    + CAST((SELECT ISNULL(SUM(MinutosExentos), 0) FROM #Tramos) AS VARCHAR(10)) +
+            ' | IdTransporte: '   + ISNULL(CAST(@IdTransporte AS VARCHAR(10)), 'NULL'), GETDATE());
+
     INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
     VALUES ('PASO7', 'Novedades | Carga: ' + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='CARGA') AS VARCHAR(5)) +
             ' | Descarga: '    + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='DESCARGA') AS VARCHAR(5)) +
@@ -472,7 +622,8 @@ BEGIN
         Kms, KmAcumulado, VelocidadPromedio, VelocidadMaxima,
         MinutosOperacion, ExcedeTolerancia, AplicoExcepcionCombustible,
         Detalle, Observacion,
-        CantidadEventos, Latitud, Longitud, FechaProcesamiento
+        CantidadEventos, Latitud, Longitud, FechaProcesamiento,
+        ToleranciaMinutos, ResponsableDemora, MinutosDemora, MinutosExentos, MotivoExencion
     )
     SELECT
         @IdViaje, @DescripcionViaje, @IdVehiculo, @Dominio, @FechaViaje,
@@ -516,7 +667,7 @@ BEGIN
 
         CASE WHEN F.Novedad IN ('CARGA','DESCARGA') THEN F.MinutosOperacion END,
         CASE WHEN F.Novedad NOT IN ('CARGA','DESCARGA') THEN NULL
-             WHEN F.MinutosOperacion > @MinutosTolerancia THEN 1 ELSE 0 END,
+             WHEN F.MinutosOperacion > F.ToleranciaMin THEN 1 ELSE 0 END,
         F.AplicoExcepcion,
 
         /* Detalle narrado */
@@ -554,18 +705,22 @@ BEGIN
 
         /* Observacion */
         CASE
-            WHEN F.Novedad IN ('CARGA','DESCARGA') AND F.MinutosOperacion > @MinutosTolerancia
-            THEN 'Excede la tolerancia de ' + CAST(@MinutosTolerancia AS VARCHAR(5)) + ' min: la permanencia total en esta parada fue de ' +
+            WHEN F.Novedad IN ('CARGA','DESCARGA') AND F.MinutosOperacion > F.ToleranciaMin
+            THEN 'Excede la tolerancia de ' + CAST(F.ToleranciaMin AS VARCHAR(5)) + ' min: la permanencia total en esta parada fue de ' +
                  CAST(F.MinutosOperacion AS VARCHAR(10)) + ' min (' +
-                 CAST(F.MinutosOperacion - @MinutosTolerancia AS VARCHAR(10)) + ' min de exceso).'
+                 CAST(F.MinutosOperacion - F.ToleranciaMin AS VARCHAR(10)) + ' min de exceso).'
             WHEN F.Novedad = 'ESPERA_SIN_TAREA'
             THEN 'Derivado por ausencia de parada pendiente. La plataforma no registra un hito propio de espera sin tarea.'
+            WHEN F.Novedad = 'DETENIDO' AND F.MinutosExentos > 0
+            THEN 'Cambio de turno: ' + CAST(F.MinutosExentos AS VARCHAR(10)) + ' min no se imputan al transporte (limite de ' +
+                 CAST(@MinutosTurno AS VARCHAR(5)) + ' min en el rango).'
             WHEN F.Novedad = 'DETENIDO' AND F.Minutos >= 60
             THEN 'Detencion prolongada (' + F.Duracion + ' hs). Revisar.'
             ELSE NULL
         END,
 
-        F.Eventos, F.Lat, F.Lon, GETUTCDATE()
+        F.Eventos, F.Lat, F.Lon, GETUTCDATE(),
+        F.ToleranciaMin, F.Responsable, F.MinutosDemora, F.MinutosExentos, F.MotivoExencion
     FROM Fmt F
     ORDER BY F.FechaDesde;
 
@@ -611,8 +766,8 @@ BEGIN
         I.Ubicacion             AS [Parada],
         MAX(I.Suceso)           AS [Operacion],
         MAX(I.MinutosOperacion) AS [Minutos],
-        @MinutosTolerancia      AS [Tolerancia],
-        MAX(I.MinutosOperacion) - @MinutosTolerancia AS [Desvio],
+        MAX(I.ToleranciaMinutos) AS [Tolerancia],
+        MAX(I.MinutosOperacion) - MAX(I.ToleranciaMinutos) AS [Desvio],
         CASE WHEN MAX(CAST(I.ExcedeTolerancia AS INT)) = 1 THEN 'FUERA DE TOLERANCIA' ELSE 'OK' END AS [Estado]
     FROM dbo.Z_ItinerarioViaje I WITH (NOLOCK)
     WHERE I.IdViaje = @IdViaje AND I.Novedad IN ('CARGA','DESCARGA')
@@ -622,6 +777,8 @@ BEGIN
     IF OBJECT_ID('tempdb..#Zonas')   IS NOT NULL DROP TABLE #Zonas;
     IF OBJECT_ID('tempdb..#Eventos') IS NOT NULL DROP TABLE #Eventos;
     IF OBJECT_ID('tempdb..#Tramos')  IS NOT NULL DROP TABLE #Tramos;
+    IF OBJECT_ID('tempdb..#Ventanas') IS NOT NULL DROP TABLE #Ventanas;
+    IF OBJECT_ID('tempdb..#TurnoDet') IS NOT NULL DROP TABLE #TurnoDet;
 
     INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
     VALUES ('FIN', 'Z_SP_ItinerarioViaje finalizado | IdViaje: ' + CAST(@IdViaje AS VARCHAR(10)), GETDATE());
