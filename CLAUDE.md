@@ -42,8 +42,18 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   - Viaje finalizado: `Viaje.IdEventoFinalizacion IS NOT NULL` (la plataforma asigna ahí el
     evento GPS que finalizó el viaje). Fecha y hora de finalización = `FechaHoraEvento` de ese
     evento, en hora local (UTC-3), formato `DD/MM/AAAA HH:MM`.
-  - **Pendiente:** las 2 columnas de demoras por responsabilidad (YPF / Transporte). Requieren
-    redefinir los cálculos del SP; se tratan en la siguiente solicitud.
+  - Demoras por responsabilidad (HH:MM, se suman minutos y recién al final se formatea).
+    Se calculan **en el reporte** a partir de `Z_ItinerarioViaje`, sin tocar el SP ni la tabla:
+    - **YPF** = `COMBUSTIBLE` con `AplicoExcepcionCombustible=1` (primera carga del día ≤ 30 min)
+      + exceso sobre 45 min en `CARGA`/`DESCARGA` (`MAX(MinutosOperacion) - 45` por parada,
+      agrupando por `IdViaje, IdDibujo` porque `MinutosOperacion` se repite en cada fila de la parada).
+    - **Transporte** = `DETENIDO` (incluye la primera carga del día que excedió 30 min, tramo
+      completo) + `ESPERA_SIN_TAREA`.
+    - No cuentan: `CARRETEANDO`, `RETORNO`, `COMBUSTIBLE` sin excepción, ni la permanencia dentro de la tolerancia.
+    - Limitación: la tolerancia de 45 min está escrita fija en el reporte (en el SP es el parámetro
+      `@MinutosTolerancia`); si se cambia el default hay que cambiarla también en el reporte.
+    - Alternativa futura (punto pendiente): agregar columnas de minutos de demora por responsable
+      a `Z_ItinerarioViaje` y calcularlas en el SP.
   - No lleva comentarios `--` dentro de la consulta: la plataforma podría aplanarla a una línea.
 
 ## Reglas del cliente: PRESERVAR (no modificar la lógica de `Z_SP_ItinerarioViaje`)
@@ -61,8 +71,14 @@ cambiarlas.
 - **Tolerancia en carga y descarga:** 45 min (`@MinutosTolerancia`) sobre la permanencia
   total por parada (`MinutosOperacion`).
 - **Detención fuera de geocerca:** menos de 5 min no es novedad (es `CARRETEANDO`).
-- **Pendiente de definir con el cliente** (responsable de la demora): exceso de tolerancia en
-  carga/descarga y `ESPERA_SIN_TAREA`.
+- **Responsable de la demora (confirmado):**
+
+  | Concepto | Responsable |
+  |---|---|
+  | Primera carga de combustible del día ≤ 30 min | YPF |
+  | Exceso sobre 45 min en `CARGA`/`DESCARGA` | YPF |
+  | `DETENIDO` (incluye combustible que excedió la regla) | Transporte |
+  | `ESPERA_SIN_TAREA` | Transporte |
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
