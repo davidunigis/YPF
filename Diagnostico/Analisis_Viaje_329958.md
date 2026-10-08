@@ -12,6 +12,11 @@ transporte `TRANSPORTE JOSE BERALDI - Arenas - UM`, vehículo AG782BW, operació
 - El km recalculado (143,34) coincide con `KmRecorridos`.
 - Lo que sigue son problemas de **resultado de negocio** o defectos puntuales, no de ejecución.
 
+## Estado de los hallazgos
+- 1 y 3: solo documentados, sin cambios de cálculo (`Recomendaciones/Espera_en_Puerta_y_Geocercas.md`).
+- 2: pendiente de datos (`Extraer_Eventos_y_Estados_Viaje.sql`).
+- 4, 5 y 6: **corregidos en el SP** (y `DDL/Z_ItinerarioViaje_KmTeoricos_Decimal.sql` para el 5).
+
 ## Hallazgos (por impacto)
 
 ### 1. Los 67 min de `DETENIDO` son la cola en la puerta del destino

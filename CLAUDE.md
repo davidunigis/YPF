@@ -13,13 +13,16 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   (viaje, paradas, geocercas, eventos GPS con su geocerca y distancia, km teóricos), lo que dejó en
   `Z_ItinerarioViaje`, el log y el código desplegado del SP y de `Z_ClasificarParadasViaje`, para
   recalcular por fuera y comparar. Requiere SQL Server 2016+ (`FOR JSON`).
+- `Recomendaciones/` — documentos de recomendaciones para el cliente. Un tema que implica una decisión de
+  negocio se documenta acá y **no se implementa hasta que el usuario lo pida**.
 - `Reportes/` — consultas de reporte de UNIGIS (un `.sql` por reporte). Se guardan tal cual
   se cargan en la plataforma, con el placeholder `!!ID_VIAJE!!` (lo reemplaza la plataforma;
   no es T-SQL válido por sí solo). Sin comentarios `--` dentro: la plataforma podría aplanarlas.
 
 ## Orden de despliegue
 1. `DDL/Z_Demoras_Objetos.sql` (tabla `Z_CambioTurnoTransporte`, columnas nuevas de
-   `Z_ItinerarioViaje`, función `Z_MinutosAHHMM`).
+   `Z_ItinerarioViaje`, función `Z_MinutosAHHMM`) y `DDL/Z_ItinerarioViaje_KmTeoricos_Decimal.sql`
+   (`KmTeoricos` y `CicloKmTeoricos` pasan de `INT` a `DECIMAL(12,2)`).
 2. `SP/Z_SP_ItinerarioViaje.sql`.
 3. Volver a ejecutar el SP para los viajes (las columnas nuevas quedan NULL en lo ya procesado).
 4. Reportes de `Reportes/`.
@@ -135,19 +138,24 @@ y en **Novedades y Alertas Última Milla**.
 
 ## Hallazgos del viaje 329958 (ver `Diagnostico/Analisis_Viaje_329958.md`)
 Verificado con datos reales: el SP desplegado = repo, y una réplica en Python reproduce `Z_ItinerarioViaje`.
-Pendientes por orden de impacto (ninguno corregido todavía):
-1. Espera en la puerta del destino (2–8 m fuera de la geocerca) = `DETENIDO` → Transporte; con margen ≥ 10 m sería `DESCARGA` → YPF.
-2. El SP descarta eventos con `IdEvento > IdEventoFinalizacion` aunque su hora esté en la ventana (147 de 388 en este viaje).
-3. Origen sin `CARGA`: visitas fugaces a una geocerca de 10 puntos.
-4. `VelocidadPromedio` mal en filas fusionadas (el PASO 7 no recalcula `VelProm`).
-5. `KmTeoricos`/`CicloKmTeoricos` truncados a `INT` (130,08 → 130).
-6. Pasar por una estación de servicio sin detenerse consume la excepción diaria de combustible.
+- **Corregidos en el SP** (verificados con la réplica sobre los eventos reales):
+  - `VelocidadPromedio` de las filas fusionadas: ahora promedio ponderado por eventos (antes conservaba el del primer tramo).
+  - `KmTeoricos`/`CicloKmTeoricos`: `DECIMAL(12,2)` en el SP y en la tabla (antes `INT`, 130,08 → 130).
+  - Paso por una estación de servicio sin detenerse (velocidad mínima > `@VelocidadDetenido`) o con permanencia
+    menor a `@MinutosMinPermanencia`: pasa a `CARRETEANDO` y **no consume la excepción diaria de combustible**.
+    Un tramo con al menos un evento detenido sigue siendo `COMBUSTIBLE`. Para eso `#Tramos` tiene la columna nueva `VelMin`.
+- **Solo documentado, sin cambios de cálculo:** espera en la puerta del destino y origen sin `CARGA`
+  → `Recomendaciones/Espera_en_Puerta_y_Geocercas.md`.
+- **Pendiente de datos:** el SP descarta eventos con `IdEvento > IdEventoFinalizacion` aunque su hora esté en la
+  ventana (147 de 388 en este viaje). Falta correr `Diagnostico/Extraer_Eventos_y_Estados_Viaje.sql`.
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
   y luego el cambio en otro commit, para que el diff muestre solo lo agregado.
 - No alterar la lógica existente del SP más allá de lo solicitado.
 - Comunicación en español.
+- No ser proactivo con cambios de reglas de negocio: proponerlos en `Recomendaciones/` y esperar la decisión del usuario.
+- Los scripts de `Diagnostico/` usan tablas temporales con nombre propio por script, para poder correrse en la misma sesión de SSMS.
 - No hay SQL Server en el entorno de Claude: los cambios se validan con parseo de sintaxis (`sqlglot`,
   que no puede con el procedimiento completo) y con simulaciones de la lógica en SQLite.
   **Probar siempre en la base QA antes de pasar a producción.**
