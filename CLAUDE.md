@@ -6,6 +6,9 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
 ## Estructura
 - `SP/` — un archivo `.sql` por procedimiento, con el nombre exacto del SP
   (ej. `SP/Z_SP_ItinerarioViaje.sql`). Cada archivo contiene el `ALTER PROCEDURE` completo.
+- `Reportes/` — consultas de reporte de UNIGIS (un `.sql` por reporte). Se guardan tal cual
+  se cargan en la plataforma, con el placeholder `!!ID_VIAJE!!` (lo reemplaza la plataforma;
+  no es T-SQL válido por sí solo).
 
 ## SP en alcance
 - `Z_SP_ItinerarioViaje` — llena la tabla de reporte `dbo.Z_ItinerarioViaje` (itinerario
@@ -22,6 +25,14 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     `Z_EstacionesDeServicioYPF`, `Viaje`, `Vehiculo`, `Deposito`, `Dibujo`, `Evento`, `Log`.
   - Los comentarios del SP están sin tildes (se mantiene así).
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
+
+## Reportes en alcance
+- `Reporte_ItinerarioViaje` — consulta `dbo.Z_ItinerarioViaje` (la tabla que llena
+  `Z_SP_ItinerarioViaje`) con `Viaje`, `Jornada` y `EstadoViaje`, filtrada por
+  `Z.IdViaje IN (!!ID_VIAJE!!)` y ordenada por `FechaHoraDesde`. Columnas: viaje, vehículo,
+  origen/destino, contrato (`Viaje.Varchar1`), km teóricos y recorridos, evento, ubicación,
+  período, duración, velocidades, detalle y estado del viaje.
+  - Ojo: el `INNER JOIN` a `Jornada` no aporta columnas; solo excluye viajes sin `IdJornada`.
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
