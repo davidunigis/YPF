@@ -42,7 +42,7 @@ BEGIN
             @IdDibujoDestino INT, @Destino VARCHAR(150),
             @IdEventoIni BIGINT, @IdEventoFin BIGINT,
             @FechaIni DATETIME, @FechaFin DATETIME,
-            @KmTeoricos INT, @TiempoEstandar DECIMAL(10,2), @CicloKmTeoricos INT,
+            @KmTeoricos DECIMAL(12,2), @TiempoEstandar DECIMAL(10,2), @CicloKmTeoricos DECIMAL(12,2),
             @KmViaje DECIMAL(12,2), @MinutosViaje INT,
             @FinUltimaOperacion DATETIME,
             @IdTransporte INT, @TolOrigen INT, @TolDestino INT;
@@ -308,6 +308,7 @@ BEGIN
         CAST(SUM(E.DistanciaKm) AS DECIMAL(12,2))       AS Kms,
         CAST(AVG(E.Velocidad)   AS DECIMAL(10,2))       AS VelProm,
         CAST(MAX(E.Velocidad)   AS DECIMAL(10,2))       AS VelMax,
+        CAST(MIN(E.Velocidad)   AS DECIMAL(10,2))       AS VelMin,
         CAST(0 AS BIT)                                  AS AplicoExcepcion,
         CAST(NULL AS INT)                               AS Minutos,
         CAST(NULL AS INT)                               AS ToleranciaMin,
@@ -332,6 +333,14 @@ BEGIN
             ClaseZona = NULL
     WHERE Novedad IN ('CARGA','DESCARGA','RETORNO')
       AND Minutos < @MinutosMinPermanencia;
+
+    /* Paso por una estacion de servicio sin detenerse (o fugaz): no es carga de
+       combustible y no debe consumir la excepcion diaria del PASO 7.a */
+    UPDATE #Tramos
+        SET Novedad   = CASE WHEN VelProm > @VelocidadDetenido THEN 'CARRETEANDO' ELSE 'DETENIDO' END,
+            ClaseZona = NULL
+    WHERE Novedad = 'COMBUSTIBLE'
+      AND (Minutos < @MinutosMinPermanencia OR VelMin > @VelocidadDetenido);
 
 
     /*==========================================================================
@@ -411,6 +420,7 @@ BEGIN
                SUM(T.Kms)         AS Kms,
                SUM(T.Eventos)     AS Eventos,
                MAX(T.VelMax)      AS VelMax,
+               SUM(T.VelProm * T.Eventos) / NULLIF(SUM(T.Eventos), 0) AS VelProm,
                MAX(CAST(T.AplicoExcepcion AS INT)) AS Exc
         FROM Fusion F INNER JOIN #Tramos T ON T.Orden = F.Orden
         GROUP BY F.Novedad, F.Z, F.G
@@ -420,6 +430,7 @@ BEGIN
             T.Kms             = C.Kms,
             T.Eventos         = C.Eventos,
             T.VelMax          = C.VelMax,
+            T.VelProm         = CAST(C.VelProm AS DECIMAL(10,2)),
             T.AplicoExcepcion = CAST(C.Exc AS BIT),
             T.Minutos         = DATEDIFF(MINUTE, C.Desde, C.Hasta)
     FROM #Tramos T INNER JOIN Consol C ON C.OrdenBase = T.Orden;
