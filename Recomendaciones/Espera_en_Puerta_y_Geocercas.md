@@ -37,7 +37,7 @@ durante unos 37 min sin registrar ninguna `CARGA`.
 | A | **Redibujar las geocercas** de planta y destino incluyendo la zona de ingreso y espera | No requiere código. Es lo que el documento supone ("ingreso a la geocerca"). Se ve y se audita en el mapa. | Hay que relevar cada locación. Puede incluir calles de paso. Las geocercas también se usan para **cerrar viajes** y para alertas: agrandarlas puede adelantar un cierre. |
 | B | **Parámetro de margen en metros** en el SP (por defecto 0 = comportamiento actual), solo para las paradas del viaje, no para estaciones de servicio | Rápido y uniforme. Con 0 no cambia nada hasta que se decida. Absorbe el error del GPS. | Un solo valor para todos los sitios. No cubre colas largas. Un margen grande genera falsos positivos (camiones que pasan por calles cercanas). |
 | C | **Dejarlo como está** y formalizarlo: espera fuera de la geocerca = detenido del transporte | Coincide literalmente con el documento. | La cola de descarga, que depende de YPF, se imputa al transporte: riesgo de disputas. |
-| D | **Usar los estados de la plataforma** (llegada, atraque, inicio y fin de carga/descarga) en vez del GPS | Es lo que describe el documento (el basculero cambia estados). No depende del ruido GPS. | Depende de que se registren. No aplica a destinos sin personal en sitio. Falta revisar qué tablas lo guardan (`ParadaTraceEstado`, `EstadoViajeTraceEstado`, `Z_LPViajeMonitorGeocerca`). |
+| D | **Usar los estados de la plataforma** (inicio y fin de carga/descarga) en vez del GPS | Es lo que describe el documento (el basculero cambia estados). No depende del ruido GPS. Las fuentes existen: `EstadoViajeTraceEstado`, `ParadaTraceEstado`, `BitacoraViaje`. | **No aplica al destino sin personal en sitio** (en el viaje 329958 pasa de `En tránsito` a `Finalizado` sin estados de descarga). Sirve para el origen, donde hay basculero. |
 | E | **Señalizar sin cambiar los números**: una observación en cada `DETENIDO` que está a menos de N m de una parada ("detenido a 8 m de la geocerca X") | Transparencia y auditoría sin tocar la imputación. | No resuelve la imputación. Requiere código. |
 
 ## 4. Recomendación
@@ -47,7 +47,8 @@ durante unos 37 min sin registrar ninguna `CARGA`.
 3. Si la respuesta es sí: **A como solución de fondo** y **B como complemento** (con un margen chico, 10–25 m, que
    solo absorba el error del GPS). Mientras tanto, **E** da visibilidad sin cambiar los resultados.
 4. Si la respuesta es no: **C**, dejándolo escrito como regla.
-5. En paralelo, revisar **D**: si la plataforma ya registra los estados, es la fuente más fiable.
+5. En paralelo, evaluar **D para el origen**, donde el basculero registra estados. En destinos sin personal solo existe el GPS,
+   por lo que la calidad de la geocerca de destino es la que decide el resultado.
 
 ## 5. Preguntas para el cliente
 - ¿Existe una zona de espera o cola reconocida en cada planta y destino? ¿Dónde está?

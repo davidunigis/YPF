@@ -146,8 +146,14 @@ Verificado con datos reales: el SP desplegado = repo, y una réplica en Python r
     Un tramo con al menos un evento detenido sigue siendo `COMBUSTIBLE`. Para eso `#Tramos` tiene la columna nueva `VelMin`.
 - **Solo documentado, sin cambios de cálculo:** espera en la puerta del destino y origen sin `CARGA`
   → `Recomendaciones/Espera_en_Puerta_y_Geocercas.md`.
-- **Pendiente de datos:** el SP descarta eventos con `IdEvento > IdEventoFinalizacion` aunque su hora esté en la
-  ventana (147 de 388 en este viaje). Falta correr `Diagnostico/Extraer_Eventos_y_Estados_Viaje.sql`.
+- **Confirmado, pendiente de decisión:** el SP descarta eventos con `IdEvento > IdEventoFinalizacion` aunque su hora esté en la
+  ventana: 147 de 388 en este viaje, **datos atrasados** (90–234 min) que llegaron en dos lotes. Con los 388 eventos el km GPS sube
+  de 143,3 a 150,6 y la detención de 67 min pasa a 68 min (sigue siendo real). Falta decidir: quitar el tope de `IdEvento`
+  (dejar solo el filtro por hora) y **cuándo corre el SP** en la plataforma (el cierre del viaje y la certificación corren en el
+  mismo segundo; los datos atrasados llegan después).
+- **El viaje 329958 es de prueba** (`PruebaFacundo`): los estados del basculero no son reales (carga de 15 s, marcada a 9,3 km de la
+  planta). El destino no tiene estados de descarga (sin personal en sitio): ahí solo hay GPS. Para validar el origen hace falta un viaje real.
+- Fuentes de estados: `EstadoViajeTraceEstado`, `ParadaTraceEstado`, `BitacoraViaje`. `Z_LPViajeMonitorGeocerca` no se usa en Última Milla.
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
