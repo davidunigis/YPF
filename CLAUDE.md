@@ -8,6 +8,11 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   (ej. `SP/Z_SP_ItinerarioViaje.sql`). Cada archivo contiene el `ALTER PROCEDURE` completo.
 - `DDL/` — objetos de soporte (tablas, columnas, funciones) que el SP y los reportes necesitan.
   Scripts re-ejecutables. **Se ejecutan antes de desplegar el SP.**
+- `Diagnostico/` — consultas de solo lectura para analizar un viaje (no son reportes de la plataforma).
+  `Extraer_Datos_Viaje.sql` junta en un único CSV (Seccion | Parte | Dato JSON) las entradas que usa el SP
+  (viaje, paradas, geocercas, eventos GPS con su geocerca y distancia, km teóricos), lo que dejó en
+  `Z_ItinerarioViaje`, el log y el código desplegado del SP y de `Z_ClasificarParadasViaje`, para
+  recalcular por fuera y comparar. Requiere SQL Server 2016+ (`FOR JSON`).
 - `Reportes/` — consultas de reporte de UNIGIS (un `.sql` por reporte). Se guardan tal cual
   se cargan en la plataforma, con el placeholder `!!ID_VIAJE!!` (lo reemplaza la plataforma;
   no es T-SQL válido por sí solo). Sin comentarios `--` dentro: la plataforma podría aplanarlas.
