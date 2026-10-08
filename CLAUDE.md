@@ -33,6 +33,18 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   origen/destino, contrato (`Viaje.Varchar1`), km teóricos y recorridos, evento, ubicación,
   período, duración, velocidades, detalle y estado del viaje.
   - Ojo: el `INNER JOIN` a `Jornada` no aporta columnas; solo excluye viajes sin `IdJornada`.
+- `Reporte_ResumenViajesFinalizados` — una fila por viaje (resumen), solo viajes finalizados.
+  Columnas pedidas: ID viaje, descripción, vehículo, transporte, contrato, estado del viaje,
+  km teóricos, ciclo km teóricos, demoras responsabilidad YPF, demoras responsabilidad
+  Transporte, fecha y hora de finalización, origen, destino, tipo de servicio.
+  - Transporte: `Vehiculo.IdTransporte -> Transporte.RazonSocial`.
+  - Tipo de servicio: `Viaje.IdCategoriaViaje -> CategoriaViaje.Descripcion`.
+  - Viaje finalizado: `Viaje.IdEventoFinalizacion IS NOT NULL` (la plataforma asigna ahí el
+    evento GPS que finalizó el viaje). Fecha y hora de finalización = `FechaHoraEvento` de ese
+    evento, en hora local (UTC-3), formato `DD/MM/AAAA HH:MM`.
+  - **Pendiente:** las 2 columnas de demoras por responsabilidad (YPF / Transporte). Requieren
+    redefinir los cálculos del SP; se tratan en la siguiente solicitud.
+  - No lleva comentarios `--` dentro de la consulta: la plataforma podría aplanarla a una línea.
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
