@@ -46,6 +46,24 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     redefinir los cálculos del SP; se tratan en la siguiente solicitud.
   - No lleva comentarios `--` dentro de la consulta: la plataforma podría aplanarla a una línea.
 
+## Reglas del cliente: PRESERVAR (no modificar la lógica de `Z_SP_ItinerarioViaje`)
+Las reglas de duración del SP (PASO 7) son reglas establecidas por el cliente. Cualquier
+cálculo nuevo (p. ej. demoras por responsabilidad) se construye **encima** de ellas, sin
+cambiarlas.
+- **Combustible:** el vehículo solo puede hacer **una carga por día**, de **hasta 30 min**
+  (`@MinutosCombustible`) en estación de servicio.
+  - Primera del día y ≤ 30 min → queda `COMBUSTIBLE`; esa detención **la paga YPF**.
+  - Primera del día y > 30 min → **todo el tramo** pasa a `DETENIDO` (no solo el exceso);
+    **la paga la línea de transporte**.
+  - Siguientes del día: > 5 min (`@MinutosDetenido`) → `DETENIDO`; si no, `COMBUSTIBLE`.
+  - En la tabla: `Novedad='COMBUSTIBLE'` + `AplicoExcepcionCombustible=1` = YPF;
+    `Novedad='DETENIDO'` + `AplicoExcepcionCombustible=1` = excedió los 30 min (transporte).
+- **Tolerancia en carga y descarga:** 45 min (`@MinutosTolerancia`) sobre la permanencia
+  total por parada (`MinutosOperacion`).
+- **Detención fuera de geocerca:** menos de 5 min no es novedad (es `CARRETEANDO`).
+- **Pendiente de definir con el cliente** (responsable de la demora): exceso de tolerancia en
+  carga/descarga y `ESPERA_SIN_TAREA`.
+
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
   y luego el cambio en otro commit, para que el diff muestre solo lo agregado.
