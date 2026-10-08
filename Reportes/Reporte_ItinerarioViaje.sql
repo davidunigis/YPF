@@ -16,6 +16,12 @@ SELECT Z.IdViaje
 	,Z.VelocidadMaxima
 	,Z.Detalle
 	,EV.descripcion AS [Estado Viaje]
+	,Z.ResponsableDemora AS [Responsable Demora]
+	,Z.MinutosDemora AS [Minutos Imputados]
+	,Z.MinutosExentos AS [Minutos Exentos]
+	,Z.MotivoExencion AS [Motivo Exencion]
+	,Z.Latitud AS [Latitud]
+	,Z.Longitud AS [Longitud]
 FROM dbo.Z_ItinerarioViaje AS Z WITH (NOLOCK)
 INNER JOIN dbo.Viaje AS V WITH (NOLOCK) ON V.IdViaje = Z.IdViaje
 INNER JOIN dbo.Jornada J WITH (NOLOCK) ON J.IdJornada = V.IdJornada
