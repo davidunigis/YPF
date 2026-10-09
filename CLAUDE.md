@@ -112,6 +112,18 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
   - Parte de `Viaje` (no de `Z_ItinerarioViaje`) para que un viaje finalizado sin itinerario calculado aparezca igual, con las dos demoras
     **vacías** (no en cero). Origen y destino salen de `Z_ItinerarioViaje` y, si no hay, de `Viaje`. Vehículo sin espacios a la derecha.
   - Encabezados sin tildes, como el resto de los reportes.
+- `Reporte_ItinerarioViajeConsolidado` — una fila por viaje con los totales (reporte propio del usuario; el original está en el commit anterior).
+  Columnas: ID, descripción, vehículo, origen, destino, contrato, km teóricos y de ciclo, km GPS, estado + 3 de demoras en HH:MM:
+  `Demoras Responsabilidad YPF` (minutos totales `CARGA`+`DESCARGA`, como el pedido del cliente), `Exceso sobre Tolerancia YPF`
+  (suma de `MinutosDemora` con responsable YPF) y `Demoras Responsabilidad Transporte` (`DETENIDO` menos `MinutosExentos`).
+  - **Criterio de finalizado = traza de estado** `EstadoViajeTraceEstado.IdEstadoViajeDestino = 99` (el del usuario; más robusto que
+    `IdEventoFinalizacion > 0`: sirve también para cierres manuales). La fecha de finalización es `MAX(EstadoViajeTraceEstado.Fecha)` de esa
+    transición (UTC; el filtro la pasa a hora local −3 h).
+  - **Operación UM = `Jornada.IdOperacion = 139`** (filtro del usuario).
+  - **Placeholders de fecha asumidos: `!!FECHA_DESDE!!` y `!!FECHA_HASTA!!`**, entre comillas simples y en formato ISO `yyyy-mm-dd`
+    (`CAST('...' AS DATE)`); el rango es inclusivo sobre la **fecha local** de finalización. Si la plataforma usa otros nombres o formato
+    `dd/mm/aaaa`, hay que ajustarlos (`CONVERT(DATE, '...', 103)`).
+  - Las columnas de demora salen de `Z_ItinerarioViaje`: un viaje que no se reprocesó con el SP nuevo muestra `00:00` en `Exceso sobre Tolerancia YPF`.
 
 ## Documento de negocio (fuente de reglas)
 `YPF_ARENAS_TO_BE_03-06_UNIGIS_V3` (Documento To Be, v3, 04-06-2026). No está en el repo (tiene
