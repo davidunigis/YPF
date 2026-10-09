@@ -13,6 +13,9 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   (viaje, paradas, geocercas, eventos GPS con su geocerca y distancia, km teóricos), lo que dejó en
   `Z_ItinerarioViaje`, el log y el código desplegado del SP y de `Z_ClasificarParadasViaje`, para
   recalcular por fuera y comparar. Requiere SQL Server 2016+ (`FOR JSON`).
+  **`Extraer_Viaje_Completo.sql` es el script a usar** (reúne los dos anteriores y agrega estado secundario, indicadores, información
+  adicional, incidencias y tablas de reglas/alertas; cambiar `@IdViaje`). `Extraer_Datos_Viaje.sql` y `Extraer_Eventos_y_Estados_Viaje.sql`
+  quedan como versiones parciales. Se usó con el viaje 329958 (viaje de prueba).
 - `Operacion/` — scripts operativos que **escriben** datos. `Reprocesar_Itinerario_Viajes.sql` vuelve a ejecutar el SP para los viajes
   finalizados de un rango de fechas (usar después de desplegar un cambio del SP; en SSMS activar "Descartar resultados después de la ejecución").
 - `Recomendaciones/` — documentos de recomendaciones para el cliente. Un tema que implica una decisión de
