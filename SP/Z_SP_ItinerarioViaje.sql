@@ -209,8 +209,9 @@ BEGIN
       AND E.Valido          = 'True'
       AND E.FechaHoraEvento >= @FechaIni
       AND E.FechaHoraEvento <= @FechaFin
-      AND (@IdEventoIni IS NULL OR E.IdEvento >= @IdEventoIni)
-      AND (@IdEventoFin IS NULL OR E.IdEvento <= @IdEventoFin);
+      AND (@IdEventoIni IS NULL OR E.IdEvento >= @IdEventoIni);
+    /* Sin tope superior por IdEvento: los reportes GPS pueden llegar horas despues (el IdEvento
+       se asigna al recibirlos) y una corrida posterior debe poder usarlos. La ventana es temporal. */
 
     DELETE FROM #Eventos
     WHERE Lat IS NULL OR Lon IS NULL OR Lat = 0 OR Lon = 0

@@ -268,8 +268,7 @@ WHERE E.IdVehiculo      = @IdVehiculo
   AND E.Valido          = 'True'
   AND E.FechaHoraEvento >= @FechaIni
   AND E.FechaHoraEvento <= @FechaFin
-  AND (@IdEventoIni IS NULL OR E.IdEvento >= @IdEventoIni)
-  AND (@IdEventoFin IS NULL OR E.IdEvento <= @IdEventoFin);
+  AND (@IdEventoIni IS NULL OR E.IdEvento >= @IdEventoIni);   -- el SP ya no usa tope superior por IdEvento
 
 /* Mismas condiciones que el DELETE del SP, pero marcando en vez de borrar */
 UPDATE #Ev

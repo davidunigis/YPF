@@ -14,7 +14,8 @@ transporte `TRANSPORTE JOSE BERALDI - Arenas - UM`, vehículo AG782BW, operació
 
 ## Estado de los hallazgos
 - 1 y 3: solo documentados, sin cambios de cálculo (`Recomendaciones/Espera_en_Puerta_y_Geocercas.md`).
-- 2: **confirmado** con la segunda extracción (ver "Segunda extracción" al final).
+- 2: **confirmado y corregido en el SP** (se quitó el tope de `IdEvento`). Como el SP corre al cierre, falta decidir una segunda
+  corrida: `Recomendaciones/Datos_Atrasados_y_Momento_de_Ejecucion.md`.
 - 3: el viaje es de prueba y los estados de la plataforma no son reales; se reinterpreta abajo.
 - 4, 5 y 6: **corregidos en el SP** (y `DDL/Z_ItinerarioViaje_KmTeoricos_Decimal.sql` para el 5).
 

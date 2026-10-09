@@ -3,10 +3,10 @@
 
   Solo LEE. Mismo formato de salida que Extraer_Datos_Viaje.sql (Seccion | Parte | Dato).
   Responde dos preguntas que quedaron abiertas:
-    1) Los eventos que el SP DESCARTA: el SP filtra por tiempo y ademas por
-       IdEvento <= IdEventoFinalizacion; los datos que llegan tarde (con IdEvento
-       mayor pero hora anterior) quedan afuera. Aca van TODOS los de la ventana,
-       con FechaHoraRecepcion, y la marca UsadoPorSP.
+    1) Los datos que llegan tarde: con IdEvento mayor al de cierre pero hora anterior.
+       El SP ya NO los descarta por IdEvento (filtra por la ventana de tiempo y
+       IdEvento >= IdEventoActivacion). Aca van TODOS los de la ventana, con
+       FechaHoraRecepcion, la marca UsadoPorSP y la marca IdMayorAlCierre.
     2) Los estados reales del viaje y de sus paradas (trazas de estado, bitacora,
        monitor de geocercas) para contrastarlos con lo que infiere el GPS.
 
@@ -68,8 +68,8 @@ SELECT
     CASE WHEN E.Valido = 'True'
           AND E.FechaHoraEvento >= @FechaIni AND E.FechaHoraEvento <= @FechaFin
           AND (@IdEventoIni IS NULL OR E.IdEvento >= @IdEventoIni)
-          AND (@IdEventoFin IS NULL OR E.IdEvento <= @IdEventoFin)
          THEN 1 ELSE 0 END AS UsadoPorSP,
+    CASE WHEN E.IdEvento > @IdEventoFin THEN 1 ELSE 0 END AS IdMayorAlCierre,
     CASE WHEN E.FechaHoraEvento >= @FechaIni AND E.FechaHoraEvento <= @FechaFin THEN 1 ELSE 0 END AS EnVentanaTiempo,
     (ROW_NUMBER() OVER (ORDER BY E.FechaHoraEvento, E.IdEvento) - 1) / @TamChunk AS Chunk
 INTO #EvTodos
@@ -86,7 +86,7 @@ SELECT 'EVENTOS_TODOS', G.Chunk,
                CONVERT(VARCHAR(19), E.FechaHoraReportado, 120)  AS Reportado_UTC,
                CONVERT(VARCHAR(19), E.FechaHoraCalculada, 120)  AS Calculada_UTC,
                E.Latitud, E.Longitud, E.Velocidad, E.Rumbo, E.IdPrestador, E.Valido, E.Prioridad,
-               E.UsadoPorSP, E.EnVentanaTiempo
+               E.UsadoPorSP, E.EnVentanaTiempo, E.IdMayorAlCierre
         FROM #EvTodos E
         WHERE E.Chunk = G.Chunk
         ORDER BY E.FechaHoraEvento, E.IdEvento
@@ -98,7 +98,7 @@ SELECT 'EVENTOS_RESUMEN', 1,
        (SELECT COUNT(*) AS TotalConMargen,
                SUM(CASE WHEN UsadoPorSP = 1 THEN 1 ELSE 0 END)                         AS UsadosPorSP,
                SUM(CASE WHEN EnVentanaTiempo = 1 AND UsadoPorSP = 0 THEN 1 ELSE 0 END) AS EnVentanaPeroDescartadosPorSP,
-               SUM(CASE WHEN EnVentanaTiempo = 1 AND UsadoPorSP = 0 AND IdEvento > @IdEventoFin THEN 1 ELSE 0 END) AS DescartadosPorIdMayorAlFinal,
+               SUM(CASE WHEN EnVentanaTiempo = 1 AND IdMayorAlCierre = 1 THEN 1 ELSE 0 END) AS LlegadosDespuesDelCierre,
                SUM(CASE WHEN EnVentanaTiempo = 1 AND UsadoPorSP = 0 AND IdEvento < @IdEventoIni THEN 1 ELSE 0 END) AS DescartadosPorIdMenorAlInicio,
                SUM(CASE WHEN EnVentanaTiempo = 1 AND Valido = 0 THEN 1 ELSE 0 END)     AS NoValidos,
                MAX(DATEDIFF(MINUTE, FechaHoraEvento, FechaHoraRecepcion))              AS MaxDemoraRecepcionMin
