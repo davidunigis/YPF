@@ -16,6 +16,7 @@ SELECT Z.IdViaje
 	,Z.VelocidadMaxima
 	,Z.Detalle
 	,EV.descripcion AS [Estado Viaje]
+	,Z.ToleranciaMinutos AS [Tolerancia Minutos]
 	,Z.ResponsableDemora AS [Responsable Demora]
 	,Z.MinutosDemora AS [Minutos Imputados]
 	,Z.MinutosExentos AS [Minutos Exentos]

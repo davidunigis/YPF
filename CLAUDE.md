@@ -13,6 +13,8 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   (viaje, paradas, geocercas, eventos GPS con su geocerca y distancia, km teóricos), lo que dejó en
   `Z_ItinerarioViaje`, el log y el código desplegado del SP y de `Z_ClasificarParadasViaje`, para
   recalcular por fuera y comparar. Requiere SQL Server 2016+ (`FOR JSON`).
+- `Operacion/` — scripts operativos que **escriben** datos. `Reprocesar_Itinerario_Viajes.sql` vuelve a ejecutar el SP para los viajes
+  finalizados de un rango de fechas (usar después de desplegar un cambio del SP; en SSMS activar "Descartar resultados después de la ejecución").
 - `Recomendaciones/` — documentos de recomendaciones para el cliente. Un tema que implica una decisión de
   negocio se documenta acá y **no se implementa hasta que el usuario lo pida**.
 - `Reportes/` — consultas de reporte de UNIGIS (un `.sql` por reporte). Se guardan tal cual
@@ -24,7 +26,7 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
    `Z_ItinerarioViaje`, función `Z_MinutosAHHMM`) y `DDL/Z_ItinerarioViaje_KmTeoricos_Decimal.sql`
    (`KmTeoricos` y `CicloKmTeoricos` pasan de `INT` a `DECIMAL(12,2)`).
 2. `SP/Z_SP_ItinerarioViaje.sql`.
-3. Volver a ejecutar el SP para los viajes (las columnas nuevas quedan NULL en lo ya procesado).
+3. Volver a ejecutar el SP para los viajes (las columnas nuevas quedan NULL en lo ya procesado): `Operacion/Reprocesar_Itinerario_Viajes.sql`.
 4. Reportes de `Reportes/`.
 5. Cargar los rangos de cambio de turno por transportista en `Z_CambioTurnoTransporte`.
 
