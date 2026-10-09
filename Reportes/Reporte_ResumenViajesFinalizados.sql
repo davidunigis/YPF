@@ -48,5 +48,5 @@ LEFT JOIN dbo.Transporte AS T WITH (NOLOCK) ON T.IdTransporte = VH.IdTransporte
 INNER JOIN dbo.EstadoViaje AS EV WITH (NOLOCK) ON EV.IdEstadoViaje = V.IdEstadoViaje
 LEFT JOIN dbo.CategoriaViaje AS CV WITH (NOLOCK) ON CV.IdCategoriaViaje = V.IdCategoriaViaje
 LEFT JOIN dbo.Evento AS EF WITH (NOLOCK) ON EF.IdEvento = V.IdEventoFinalizacion
-WHERE V.IdEventoFinalizacion IS NOT NULL
+WHERE V.IdEventoFinalizacion > 0
 ORDER BY EF.FechaHoraEvento ASC

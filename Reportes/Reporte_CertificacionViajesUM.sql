@@ -33,5 +33,5 @@ OUTER APPLY (
 	FROM dbo.Z_ItinerarioViaje AS I WITH (NOLOCK)
 	WHERE I.IdViaje = V.IdViaje
 	) AS D
-WHERE V.IdEventoFinalizacion IS NOT NULL
+WHERE V.IdEventoFinalizacion > 0
 ORDER BY EF.FechaHoraEvento ASC

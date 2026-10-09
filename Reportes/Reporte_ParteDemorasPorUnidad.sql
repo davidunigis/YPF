@@ -43,7 +43,7 @@ FROM (
 		SELECT DATEFROMPARTS(YEAR(F.FinLocal), MONTH(F.FinLocal), CASE WHEN DAY(F.FinLocal) <= 15 THEN 1 ELSE 16 END) AS PeriodoDesde
 			,CASE WHEN DAY(F.FinLocal) <= 15 THEN DATEFROMPARTS(YEAR(F.FinLocal), MONTH(F.FinLocal), 15) ELSE EOMONTH(F.FinLocal) END AS PeriodoHasta
 		) AS L
-	WHERE V.IdEventoFinalizacion IS NOT NULL
+	WHERE V.IdEventoFinalizacion > 0
 	) AS X
 GROUP BY X.Transporte
 	,X.Vehiculo

@@ -25,7 +25,7 @@ INSERT INTO @Ids (IdViaje)
 SELECT V.IdViaje
 FROM dbo.Viaje V WITH (NOLOCK)
 INNER JOIN dbo.Evento EF WITH (NOLOCK) ON EF.IdEvento = V.IdEventoFinalizacion
-WHERE V.IdEventoFinalizacion IS NOT NULL
+WHERE V.IdEventoFinalizacion > 0
   AND DATEADD(HOUR, @Offset, EF.FechaHoraEvento) >= @Desde
   AND DATEADD(HOUR, @Offset, EF.FechaHoraEvento) <= @Hasta
   -- AND V.IdViaje IN (329958)

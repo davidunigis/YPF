@@ -92,7 +92,7 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
   cantidad de detenidos y tiempo exento.
   - Transporte: `Vehiculo.IdTransporte -> Transporte.RazonSocial` (LEFT JOIN).
   - Tipo de servicio: `Viaje.IdCategoriaViaje -> CategoriaViaje.Descripcion` (LEFT JOIN).
-  - Finalizado: `Viaje.IdEventoFinalizacion IS NOT NULL`. Fecha y hora de finalización = `FechaHoraEvento`
+  - Finalizado: `Viaje.IdEventoFinalizacion > 0` (los viajes sin cerrar tienen **0, no NULL**; evidencia: viaje 330113). Fecha y hora de finalización = `FechaHoraEvento`
     de ese evento, hora local (UTC-3), `DD/MM/AAAA HH:MM`.
   - `Demoras Responsabilidad YPF` = exceso origen + exceso destino. `Demoras Responsabilidad Transporte` =
     suma de `MinutosDemora` con responsable `TRANSPORTE`. Todo en HH:MM vía `dbo.Z_MinutosAHHMM`.
@@ -173,6 +173,13 @@ Verificado con datos reales: el SP desplegado = repo, y una réplica en Python r
 - **El viaje 329958 es de prueba** (`PruebaFacundo`): los estados del basculero no son reales (carga de 15 s, marcada a 9,3 km de la
   planta). El destino no tiene estados de descarga (sin personal en sitio): ahí solo hay GPS. Para validar el origen hace falta un viaje real.
 - Fuentes de estados: `EstadoViajeTraceEstado`, `ParadaTraceEstado`, `BitacoraViaje`. `Z_LPViajeMonitorGeocerca` no se usa en Última Milla.
+
+## Viaje 330113 (ver `Diagnostico/Analisis_Viaje_330113.md`)
+- Marcado `FUERA DE TOLERANCIA` porque el SP lo procesó **sin que el viaje hubiera empezado** (`Programado`, `IdEventoActivacion` = `IdEventoFinalizacion` = 0).
+  Ventana de respaldo = creación + 72 h → tomó 120 min del camión dentro de BDTN49 (antes del viaje) como `DESCARGA` (+75 min sobre 45).
+- Los viajes sin activar/cerrar tienen 0, no NULL. Los filtros de "finalizado" de los reportes y de `Operacion/Reprocesar_Itinerario_Viajes.sql` ya usan `> 0`.
+- **Pendiente de decisión, no implementado:** salir sin procesar si no hay activación y/o usar `FechaInicioReal`/`FechaFinReal` como respaldo
+  → `Recomendaciones/Viajes_sin_activacion_y_ventana_del_SP.md`. El resultado del SP para este viaje se **reconstruyó** (no se recibió `Z_ItinerarioViaje`).
 
 ## Forma de trabajo
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
