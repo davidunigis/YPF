@@ -95,6 +95,18 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
 - `Reporte_ParteDemorasPorUnidad` — parte por **empresa, unidad y período quincenal** (1–15 y 16–fin de
   mes, según la fecha de finalización local) sobre los viajes finalizados elegidos. Totales de tiempo y
   exceso en origen/destino, demoras YPF, detenidos registrables y demoras del transporte.
+- `Reporte_CertificacionViajesUM` — pedido del cliente "Certificar los viajes de UM": tabla de **una fila por viaje**, solo viajes
+  finalizados, con exactamente 14 columnas: ID viaje, descripción, vehículo, transporte, contrato, estado del viaje, km teóricos, ciclo km
+  teóricos, demoras responsabilidad YPF, demoras responsabilidad Transporte, fecha y hora de finalización, origen, destino, tipo de servicio.
+  - **Sin filtros ni `!!ID_VIAJE!!`**: los filtros del pedido (fecha / rango de fechas o día en curso, y contrato) los agrega el usuario con
+    placeholders propios. Columnas para filtrar: finalización `EF.FechaHoraEvento` (UTC; hora local = −3 h) y contrato `V.Varchar1`.
+    El reporte tampoco filtra por operación UM (en el viaje de prueba `Jornada.IdOperacion` = 139).
+  - **Demora YPF = suma total de minutos** de las novedades `CARGA` y `DESCARGA` (en GPS la espera y la operación son un solo tramo).
+    **Demora Transporte = suma de minutos de `DETENIDO`**, descontando `MinutosExentos` (cambio de turno); sin rangos de turno cargados
+    equivale a la suma bruta. Esto difiere de `Reporte_ResumenViajesFinalizados`, donde YPF es solo el exceso sobre la tolerancia.
+  - Parte de `Viaje` (no de `Z_ItinerarioViaje`) para que un viaje finalizado sin itinerario calculado aparezca igual, con las dos demoras
+    **vacías** (no en cero). Origen y destino salen de `Z_ItinerarioViaje` y, si no hay, de `Viaje`. Vehículo sin espacios a la derecha.
+  - Encabezados sin tildes, como el resto de los reportes.
 
 ## Documento de negocio (fuente de reglas)
 `YPF_ARENAS_TO_BE_03-06_UNIGIS_V3` (Documento To Be, v3, 04-06-2026). No está en el repo (tiene
@@ -129,7 +141,8 @@ y en **Novedades y Alertas Última Milla**.
 1. **Umbral de detenido = 15 min.** El ejemplo del documento (`d1..dn` = 12, 1, 17, 0, 25) sugiere que
    también se registran detenidos muy cortos; en ese caso `@MinutosDetenido` debería bajar (0).
 2. **Demora YPF = solo el exceso** sobre la tolerancia (no el total de minutos). Los totales salen
-   en columnas aparte.
+   en columnas aparte. *(El pedido del cliente para `Reporte_CertificacionViajesUM` define la demora YPF como la suma total de minutos;
+   los reportes anteriores siguen con el exceso hasta que el usuario decida alinearlos.)*
 3. **Cambio de turno:** todo-o-nada vs solo exceso (el texto dice "registra detenido", la imagen "exceso
    detenido"); los rangos por transportista salen de una tabla nueva que hay que poblar; la suma es por viaje.
 4. **Tolerancias:** 45 min en origen y destino (una por lado, no por locación).
