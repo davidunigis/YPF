@@ -14,12 +14,12 @@ SELECT V.IdViaje
     ,V.Varchar1 AS [Contrato]
     ,K.DistanciaKmTeoricos AS [KMTeoricos]
     ,K.CicloKmTeoricos
-    ,Z.KmRecorridos AS [Kilometros Recorridos GPS]
+    ,CASE WHEN Z.SinGPS = 1 THEN 'Sin eventos GPS' ELSE CONVERT(VARCHAR(20), Z.KmRecorridos) END AS [Kilometros Recorridos GPS]
     ,EV.descripcion AS [Estado Viaje]
     ,CONVERT(VARCHAR(10), TE.FechaDescarga, 103) + ' ' + CONVERT(VARCHAR(8), TE.FechaDescarga, 108) AS [Fecha y Hora Finalizacion]
-    ,dbo.Z_MinutosAHHMM(Z.MinYPF) AS [Demoras Responsabilidad YPF]
-    ,dbo.Z_MinutosAHHMM(Z.MinExceso) AS [Exceso sobre Tolerancia YPF]
-    ,dbo.Z_MinutosAHHMM(Z.MinTransporte) AS [Demoras Responsabilidad Transporte]
+    ,CASE WHEN Z.SinGPS = 0 THEN dbo.Z_MinutosAHHMM(Z.MinYPF) END AS [Demoras Responsabilidad YPF]
+    ,CASE WHEN Z.SinGPS = 0 THEN dbo.Z_MinutosAHHMM(Z.MinExceso) END AS [Exceso sobre Tolerancia YPF]
+    ,CASE WHEN Z.SinGPS = 0 THEN dbo.Z_MinutosAHHMM(Z.MinTransporte) END AS [Demoras Responsabilidad Transporte]
 FROM dbo.Viaje AS V WITH (NOLOCK)
 INNER JOIN dbo.Jornada AS J WITH (NOLOCK) ON J.IdJornada = V.IdJornada
 INNER JOIN dbo.EstadoViaje AS EV WITH (NOLOCK) ON EV.IdEstadoViaje = V.IdEstadoViaje
@@ -37,6 +37,7 @@ CROSS APPLY (
         ,MAX(I.Origen) AS Origen
         ,MAX(I.Destino) AS Destino
         ,MAX(I.KmRecorridos) AS KmRecorridos
+        ,MAX(CASE WHEN I.Novedad = 'SIN_EVENTOS_GPS' THEN 1 ELSE 0 END) AS SinGPS
         ,SUM(CASE WHEN I.Novedad IN ('CARGA', 'DESCARGA') THEN I.TiempoMinutos ELSE 0 END) AS MinYPF
         ,SUM(CASE WHEN I.ResponsableDemora = 'YPF' THEN ISNULL(I.MinutosDemora, 0) ELSE 0 END) AS MinExceso
         ,SUM(CASE WHEN I.Novedad = 'DETENIDO' THEN I.TiempoMinutos - ISNULL(I.MinutosExentos, 0) ELSE 0 END) AS MinTransporte

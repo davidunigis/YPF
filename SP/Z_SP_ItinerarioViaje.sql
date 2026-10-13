@@ -219,9 +219,45 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM #Eventos)
     BEGIN
+        /* Sin eventos GPS validos no hay hitos, detenciones ni kilometros que calcular.
+           Se deja UNA fila con lo que si se conoce del viaje (encabezado y km teoricos) para
+           que el viaje igual aparezca en los reportes. KmRecorridos es numerico: la leyenda
+           'Sin eventos GPS' queda en Suceso / Novedad / Detalle y los reportes la muestran
+           en la columna de km GPS. */
         INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
-        VALUES ('ERROR', 'Viaje ' + CAST(@IdViaje AS VARCHAR(10)) + ' sin eventos GPS validos.', GETDATE());
-        RETURN;
+        VALUES ('AVISO', 'Viaje ' + CAST(@IdViaje AS VARCHAR(10)) + ' sin eventos GPS validos: se carga una sola fila con los datos del viaje.', GETDATE());
+
+        DELETE FROM dbo.Z_ItinerarioViaje WHERE IdViaje = @IdViaje;
+
+        INSERT INTO dbo.Z_ItinerarioViaje
+        (
+            IdViaje, DescripcionViaje, IdVehiculo, Dominio, FechaViaje,
+            IdDibujoOrigen, Origen, IdDibujoDestino, Destino,
+            KmTeoricos, TiempoEstandar, CicloKmTeoricos, KmRecorridos, DesvioKm,
+            Orden, DiaViaje, TipoSuceso, Suceso, Novedad, Ubicacion,
+            Periodo, FechaHoraDesde, FechaHoraHasta, FechaDesdeUTC, FechaHastaUTC,
+            Detalle, Observacion, CantidadEventos, FechaProcesamiento
+        )
+        SELECT
+            @IdViaje, @DescripcionViaje, @IdVehiculo, @Dominio, @FechaViaje,
+            @IdDibujoOrigen, @Origen, @IdDibujoDestino, @Destino,
+            @KmTeoricos, @TiempoEstandar, @CicloKmTeoricos, NULL, NULL,
+            1, 1, 'SIN_EVENTOS_GPS', 'Sin eventos GPS', 'SIN_EVENTOS_GPS', '-',
+            LEFT(CONVERT(VARCHAR(10), L.Desde, 103), 5) + ' ' + CONVERT(VARCHAR(5), L.Desde, 108)
+              + ' -> ' +
+            LEFT(CONVERT(VARCHAR(10), L.Hasta, 103), 5) + ' ' + CONVERT(VARCHAR(5), L.Hasta, 108),
+            L.Desde, L.Hasta,
+            ISNULL(@FechaIni, GETUTCDATE()), ISNULL(@FechaFin, GETUTCDATE()),
+            'Sin eventos GPS: el vehiculo no registro eventos GPS validos entre el ' +
+              CONVERT(VARCHAR(10), L.Desde, 103) + ' ' + CONVERT(VARCHAR(5), L.Desde, 108) + ' y el ' +
+              CONVERT(VARCHAR(10), L.Hasta, 103) + ' ' + CONVERT(VARCHAR(5), L.Hasta, 108) +
+              ' (hora local). No se pueden calcular hitos de carga y descarga, detenciones ni kilometros recorridos; solo se informan los datos del viaje.',
+            'Sin eventos GPS: kilometros recorridos y demoras no calculables.',
+            0, GETUTCDATE()
+        FROM (SELECT DATEADD(HOUR, @OffsetHoras, ISNULL(@FechaIni, GETUTCDATE())) AS Desde,
+                     DATEADD(HOUR, @OffsetHoras, ISNULL(@FechaFin, GETUTCDATE())) AS Hasta) L;
+
+        GOTO Salidas;
     END;
 
     ;WITH Renum AS (SELECT Secuencia, ROW_NUMBER() OVER (ORDER BY FechaHoraEvento, IdEvento) AS N FROM #Eventos)
@@ -737,6 +773,7 @@ BEGIN
     ORDER BY F.FechaDesde;
 
 
+    Salidas:
     /*==========================================================================
       PASO 9 - Salidas
     ==========================================================================*/

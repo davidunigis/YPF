@@ -50,6 +50,11 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     `Z_EstacionesDeServicioYPF`, `Z_CambioTurnoTransporte`, `Viaje`, `Vehiculo`, `Deposito`,
     `Dibujo`, `Evento`, `Log`.
   - Los comentarios del SP están sin tildes (se mantiene así).
+  - **Viaje sin eventos GPS válidos** (el vehículo no tiene eventos en la ventana, o todos con coordenadas inválidas): ya no sale con `RETURN` sin cargar nada.
+    Borra e inserta **una sola fila** en `Z_ItinerarioViaje` con lo que sí se conoce (encabezado, origen/destino, km teóricos, ventana del viaje) y
+    `Novedad`/`TipoSuceso` = `SIN_EVENTOS_GPS`, `Suceso` = `Sin eventos GPS`, `Orden` 1, `CantidadEventos` 0; `KmRecorridos`, `DesvioKm`, tiempos y demoras quedan `NULL`.
+    `KmRecorridos` es numérico, así que la leyenda "Sin eventos GPS" va en `Suceso`/`Detalle` y los reportes la muestran en la columna de km GPS.
+    Salta a la etiqueta `Salidas:` (`GOTO`) para devolver igual los 3 resultsets. El log pasa de `ERROR` a `AVISO`.
   - Historial: `bc585ed` es la versión original; los cambios van en commits posteriores.
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 
@@ -84,6 +89,7 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
 - `Reporte_ItinerarioViaje` — detalle cronológico del viaje (los detenidos con minutos, período y
   geoposición del documento). Consulta `Z_ItinerarioViaje` + `Viaje` + `Jornada` + `EstadoViaje`.
   Se agregaron: Responsable Demora, Minutos Imputados, Minutos Exentos, Motivo Exencion, Latitud, Longitud.
+  Con fila `SIN_EVENTOS_GPS`, `Kilometros Recorridos GPS` muestra `Sin eventos GPS` (texto).
   - Ojo: el `INNER JOIN` a `Jornada` no aporta columnas; solo excluye viajes sin `IdJornada`.
   - `Latitud`/`Longitud` de la tabla son `MIN(Lat)`/`MIN(Lon)` del tramo (para una detención quieta
     coinciden con el punto real).
@@ -112,6 +118,8 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
   - Parte de `Viaje` (no de `Z_ItinerarioViaje`) para que un viaje finalizado sin itinerario calculado aparezca igual, con las dos demoras
     **vacías** (no en cero). Origen y destino salen de `Z_ItinerarioViaje` y, si no hay, de `Viaje`. Vehículo sin espacios a la derecha.
   - Encabezados sin tildes, como el resto de los reportes.
+  - Un viaje con fila `SIN_EVENTOS_GPS` sigue con las dos demoras **vacías**: `Filas` cuenta solo las filas distintas de `SIN_EVENTOS_GPS`.
+  - `Reporte_ResumenViajesFinalizados` y `Reporte_ParteDemorasPorUnidad` **no se tocaron**: esos viajes ahora aparecen (antes no tenían filas) con tiempos y demoras en `00:00`. Pendiente de decidir si deben salir vacíos.
 - `Reporte_ItinerarioViajeConsolidado` — una fila por viaje con los totales (reporte propio del usuario; `original` = la versión que pegó el usuario, en el historial git).
   Columnas: ID, descripción, vehículo, origen, destino, contrato, km teóricos y de ciclo, km GPS, estado, **fecha y hora de finalización (hora argentina)**
   y 3 demoras en HH:MM: `Demoras Responsabilidad YPF` (minutos totales `CARGA`+`DESCARGA`), `Exceso sobre Tolerancia YPF` (suma de `MinutosDemora` con
@@ -133,6 +141,8 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
     (no cae a `Z.KMTeoricos`, que corresponde al par del SP). Los km GPS no cambian.
   - Supuesto a validar con un viaje real con varios pasos a `En tránsito`: `EstadoViajeTraceEstado` no guarda el origen por transición; se infiere con la fila `CARGA` de `Z_ItinerarioViaje`.
   - Un viaje que no se reprocesó con el SP nuevo muestra `00:00` en `Exceso sobre Tolerancia YPF`.
+  - **Viaje con fila `SIN_EVENTOS_GPS`**: `Kilometros Recorridos GPS` muestra `Sin eventos GPS` (la columna pasa a texto: `CONVERT(VARCHAR(20), KmRecorridos)`) y las 3 demoras
+    salen **vacías** (no `00:00`: no se pueden calcular). Origen/destino salen de `Z.Origen`/`Z.Destino` (no hay filas `CARGA`/`DESCARGA`) y los km teóricos se buscan igual.
 
 ## Documento de negocio (fuente de reglas)
 `YPF_ARENAS_TO_BE_03-06_UNIGIS_V3` (Documento To Be, v3, 04-06-2026). No está en el repo (tiene

@@ -27,7 +27,7 @@ OUTER APPLY (
 	WHERE I.IdViaje = V.IdViaje
 	) AS Z
 OUTER APPLY (
-	SELECT COUNT(*) AS Filas
+	SELECT SUM(CASE WHEN I.Novedad <> 'SIN_EVENTOS_GPS' THEN 1 ELSE 0 END) AS Filas
 		,SUM(CASE WHEN I.Novedad IN ('CARGA', 'DESCARGA') THEN I.TiempoMinutos ELSE 0 END) AS MinYPF
 		,SUM(CASE WHEN I.Novedad = 'DETENIDO' THEN I.TiempoMinutos - ISNULL(I.MinutosExentos, 0) ELSE 0 END) AS MinTransporte
 	FROM dbo.Z_ItinerarioViaje AS I WITH (NOLOCK)

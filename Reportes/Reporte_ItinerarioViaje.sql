@@ -6,7 +6,7 @@ SELECT Z.IdViaje
 	,V.Varchar1 AS [Contrato]
 	,Z.KMTeoricos
 	,Z.CicloKmTeoricos
-	,Z.KmRecorridos AS [Kilometros Recorridos GPS]
+	,CASE WHEN Z.Novedad = 'SIN_EVENTOS_GPS' THEN 'Sin eventos GPS' ELSE CONVERT(VARCHAR(20), Z.KmRecorridos) END AS [Kilometros Recorridos GPS]
 	,Z.TipoSuceso AS [Evento]
 	,Z.Ubicacion AS [Ubicacion Evento]
 	,Z.Periodo AS [Periodo Evento]
