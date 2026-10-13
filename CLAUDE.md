@@ -122,7 +122,8 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
     Filtro `TE.FechaDescarga BETWEEN @FECHA_DESDE AND @FECHA_HASTA`, con `TE.FechaDescarga` = última transición a estado 99 en `EstadoViajeTraceEstado` **convertida a hora
     argentina** (`DATEADD(HOUR, -3, Fecha)`: las fechas de la base están en UTC). Esa misma fecha se muestra en la columna y se usa en el filtro, así que sirve para verificarlo.
     (A diferencia del reporte de referencia, que filtra sin convertir.)
-  - **Finalizado** = existe transición a 99 (criterio del usuario). **Operación UM** = `Jornada.IdOperacion = 139`. Solo viajes con filas en `Z_ItinerarioViaje`.
+  - **Finalizado** = existe transición a 99 (criterio del usuario, da la fecha de finalización) **y el estado actual del viaje es 99** (`V.IdEstadoViaje = 99`, `Finalizado -AR`):
+    un viaje que llegó a 99 y después volvió a `En tránsito` (90) u otro estado se descarta. **Operación UM** = `Jornada.IdOperacion = 139`. Solo viajes con filas en `Z_ItinerarioViaje`.
   - **Último destino**: la última fila de `Z_ItinerarioViaje` con `Novedad = 'DESCARGA'` (por `FechaHoraDesde`); su nombre sale de `Parada.Descripcion` (vía `Z.IdParada`, el nombre que usa
     `Z_KmTeoricos`, p. ej. `BDTN49`) y, si no hay parada, de `Z.Ubicacion`. Si el viaje no tiene filas `DESCARGA`, se usa `Z.Destino` (el del SP).
   - **Último origen**: la fila `Novedad = 'CARGA'` vigente en el último pase a `En tránsito`: la última que empezó antes de esa transición (si no hay, la primera posterior).

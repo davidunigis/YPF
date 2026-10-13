@@ -79,6 +79,7 @@ OUTER APPLY (
     ORDER BY KT.Id DESC
     ) AS K
 WHERE J.IdOperacion = 139
+    AND V.IdEstadoViaje = 99
     AND Z.Filas > 0
     AND TE.FechaDescarga BETWEEN @FECHA_DESDE
         AND @FECHA_HASTA
