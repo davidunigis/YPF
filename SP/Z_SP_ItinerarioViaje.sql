@@ -78,39 +78,6 @@ BEGIN
     WHERE C.ClaseParada = 'DESCARGA'
     ORDER BY C.Orden DESC;
 
-    /* PASO 1.b - Ultimo destino y ultimo origen del viaje (puede haber varias paradas).
-       Destino: parada de descarga no anulada; primero las ya descargadas (estado 91) y, entre ellas,
-                la de mayor Orden. Si ninguna esta descargada, la de mayor Orden.
-       Origen : parada de deposito de origen no anulada (el deposito de retorno no cuenta); se prefiere
-                la creada antes del ultimo pase a En transito (estado 90 en EstadoViajeTraceEstado) y,
-                entre ellas, la mas reciente.
-       Las fechas de la base estan en UTC: se pasan a hora local (@OffsetHoras) antes de compararlas.
-       Si no hay una parada valida, las variables conservan el valor calculado arriba (un SELECT sin
-       filas no las modifica). */
-    DECLARE @TransitoLocal DATETIME;
-    SELECT @TransitoLocal = DATEADD(HOUR, @OffsetHoras, MAX(TR.Fecha))
-    FROM dbo.EstadoViajeTraceEstado TR WITH (NOLOCK)
-    WHERE TR.IdViaje = @IdViaje
-      AND TR.IdEstadoViajeDestino = 90;
-
-    SELECT TOP 1 @IdDibujoDestino = C.IdDibujo, @Destino = C.Descripcion
-    FROM       dbo.Z_ClasificarParadasViaje(@IdViaje) C
-    INNER JOIN dbo.Parada       PA WITH (NOLOCK) ON PA.IdParada       = C.IdParada
-    LEFT  JOIN dbo.EstadoParada EP WITH (NOLOCK) ON EP.IdEstadoParada = PA.IdEstadoParada
-    WHERE C.ClaseParada = 'DESCARGA'
-      AND ISNULL(EP.Anulacion, 0) = 0
-    ORDER BY CASE WHEN PA.IdEstadoParada = 91 THEN 0 ELSE 1 END, C.Orden DESC, C.IdParada DESC;
-
-    SELECT TOP 1 @IdDibujoOrigen = ISNULL(DP.IdDibujo, C.IdDibujo), @Origen = ISNULL(DP.Descripcion, C.Descripcion)
-    FROM       dbo.Z_ClasificarParadasViaje(@IdViaje) C
-    INNER JOIN dbo.Parada       PA WITH (NOLOCK) ON PA.IdParada       = C.IdParada
-    LEFT  JOIN dbo.EstadoParada EP WITH (NOLOCK) ON EP.IdEstadoParada = PA.IdEstadoParada
-    LEFT  JOIN dbo.Deposito     DP WITH (NOLOCK) ON DP.IdDeposito     = C.IdDeposito
-    WHERE C.ClaseParada = 'DEPOSITO_ORIGEN'
-      AND ISNULL(EP.Anulacion, 0) = 0
-    ORDER BY CASE WHEN DATEADD(HOUR, @OffsetHoras, PA.FechaCreacion) <= @TransitoLocal THEN 0 ELSE 1 END,
-             PA.FechaCreacion DESC, C.IdParada DESC;
-
     SELECT @FechaIni = FechaHoraEvento FROM dbo.Evento WITH (NOLOCK) WHERE IdEvento = @IdEventoIni;
     SELECT @FechaFin = FechaHoraEvento FROM dbo.Evento WITH (NOLOCK) WHERE IdEvento = @IdEventoFin;
 
@@ -124,8 +91,7 @@ BEGIN
         @CicloKmTeoricos = K.CicloKmTeoricos
     FROM dbo.Z_KmTeoricos K WITH (NOLOCK)
     WHERE LTRIM(RTRIM(K.Origen))  = LTRIM(RTRIM(ISNULL(@Origen, '')))
-      AND LTRIM(RTRIM(K.Destino)) = LTRIM(RTRIM(ISNULL(@Destino, '')))
-    ORDER BY K.Id DESC;
+      AND LTRIM(RTRIM(K.Destino)) = LTRIM(RTRIM(ISNULL(@Destino, '')));
 
 
     /*==========================================================================
