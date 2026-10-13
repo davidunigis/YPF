@@ -112,17 +112,23 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
   - Parte de `Viaje` (no de `Z_ItinerarioViaje`) para que un viaje finalizado sin itinerario calculado aparezca igual, con las dos demoras
     **vacías** (no en cero). Origen y destino salen de `Z_ItinerarioViaje` y, si no hay, de `Viaje`. Vehículo sin espacios a la derecha.
   - Encabezados sin tildes, como el resto de los reportes.
-- `Reporte_ItinerarioViajeConsolidado` — una fila por viaje con los totales (reporte propio del usuario; el original está en el commit anterior).
-  Columnas: ID, descripción, vehículo, origen, destino, contrato, km teóricos y de ciclo, km GPS, estado + 3 de demoras en HH:MM:
-  `Demoras Responsabilidad YPF` (minutos totales `CARGA`+`DESCARGA`, como el pedido del cliente), `Exceso sobre Tolerancia YPF`
-  (suma de `MinutosDemora` con responsable YPF) y `Demoras Responsabilidad Transporte` (`DETENIDO` menos `MinutosExentos`).
-  - **Criterio de finalizado = traza de estado** `EstadoViajeTraceEstado.IdEstadoViajeDestino = 99` (el del usuario; más robusto que
-    `IdEventoFinalizacion > 0`: sirve también para cierres manuales). La fecha de finalización es `MAX(EstadoViajeTraceEstado.Fecha)` de esa
-    transición (UTC; el filtro la pasa a hora local −3 h).
-  - **Operación UM = `Jornada.IdOperacion = 139`** (filtro del usuario).
-  - **Placeholders de fecha asumidos: `!!FECHA_DESDE!!` y `!!FECHA_HASTA!!`**, entre comillas simples y en formato ISO `yyyy-mm-dd`
-    (`CAST('...' AS DATE)`); el rango es inclusivo sobre la **fecha local** de finalización. Si la plataforma usa otros nombres o formato
-    `dd/mm/aaaa`, hay que ajustarlos (`CONVERT(DATE, '...', 103)`).
+- `Reporte_ItinerarioViajeConsolidado` — una fila por viaje con los totales (reporte propio del usuario; las versiones anteriores están en el historial git:
+  `original` = la que pegó el usuario). Columnas: ID, descripción, vehículo, **origen, destino, contrato, km teóricos, km de ciclo**, km GPS, estado,
+  **fecha y hora de finalización (UTC)** y 3 demoras en HH:MM: `Demoras Responsabilidad YPF` (minutos totales `CARGA`+`DESCARGA`),
+  `Exceso sobre Tolerancia YPF` (suma de `MinutosDemora` con responsable YPF) y `Demoras Responsabilidad Transporte` (`DETENIDO` menos `MinutosExentos`).
+  - **Placeholders de fecha: `!!FECHA_DESDE!!` y `!!FECHA_HASTA!!`, formato `dd/mm/aaaa`**, tratados igual que en el reporte de referencia del usuario
+    (certificación LP): `DECLARE @FECHA_DESDE/@FECHA_HASTA`, `CONVERT(DATETIME, CAST('...' AS VARCHAR), 103)` y `@FECHA_HASTA = DATEADD(DAY, 1, @FECHA_HASTA)`.
+    Filtro: `TE.FechaDescarga BETWEEN @FECHA_DESDE AND @FECHA_HASTA`, donde `TE.FechaDescarga` = última transición a estado 99 en `EstadoViajeTraceEstado`.
+    Esa fecha está en **UTC** y el filtro la compara **sin convertir** (igual que la referencia), así que un viaje finalizado después de las 21:00 locales cuenta para
+    el día siguiente. La columna `Fecha y Hora Finalizacion (UTC)` muestra el valor exacto que se compara, para verificar el filtro.
+  - **Finalizado** = existe transición a 99 (criterio del usuario). **Operación UM** = `Jornada.IdOperacion = 139`. Solo viajes con filas en `Z_ItinerarioViaje`.
+  - **Último destino**: paradas `IdTipoParada = 3` no anuladas (`EstadoParada.Anulacion = 0`); primero las que están en estado 91 (`Descargado`) y, entre ellas, la de mayor `Orden`
+    (si ninguna está descargada, la de mayor `Orden`). **Último origen**: paradas `IdTipoParada = 1` no anuladas (nombre del depósito `Parada.IdDeposito`, si no el de la parada);
+    se prefiere la creada antes de la última transición a `En tránsito` (estado 90) y, entre ellas, la más reciente.
+  - **Km teóricos y de ciclo** = `Z_KmTeoricos` para el par (último origen, último destino) por nombre (con `LTRIM/RTRIM`), tomando el `Id` más nuevo si hay duplicados; vacío si el par no existe.
+    Los km GPS no cambian. **Ojo**: `Z_ItinerarioViaje.Origen/Destino/KmTeoricos/DesvioKm` (calculados por el SP) siguen con la lógica anterior (depósito de salida y última parada de descarga por `Orden`).
+  - `EstadoViajeTraceEstado` **no guarda el origen** de cada transición (columnas: `IdViaje`, `IdEstadoViajeOrigen/Destino`, `Login`, `Fecha`, `FechaCreacion`, `IdMotivo`, `Observaciones`, `Modo`):
+    por eso el origen "de la última vez que pasó a tránsito" se aproxima con la fecha de creación de las paradas de origen. **A validar con un viaje real con varios pasos a `En tránsito`.**
   - Las columnas de demora salen de `Z_ItinerarioViaje`: un viaje que no se reprocesó con el SP nuevo muestra `00:00` en `Exceso sobre Tolerancia YPF`.
 
 ## Documento de negocio (fuente de reglas)
