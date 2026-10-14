@@ -58,12 +58,17 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   - **Hora previa a la activación** (`@MinutosAtras`=60): la ventana de eventos arranca 60 min antes del evento de activación (`@FechaVentana`), para ver si el vehículo ya estaba
     dentro de la geocerca de carga (la tolerancia cuenta desde el ingreso) y el trayecto hacia ella (`CARRETEANDO`; los detenidos fuera de geocerca > `@MinutosDetenido` son del transporte).
     Los eventos previos no pasan por el filtro `IdEvento >= IdEventoActivacion` (tienen IdEvento menor). Sin evento de activación (viaje sin activar) no se mira hacia atrás.
-    Efectos: el primer tramo, `KmRecorridos` y `% Viaje` incluyen esa hora; `DiaViaje` nunca es menor que 1. Limitación: si en esa hora el vehículo entró y salió del depósito
-    varias veces, la primera visita es la que cuenta como carga (PASO 7.c).
+    Efectos: el primer tramo, `KmRecorridos` y `% Viaje` incluyen esa hora; `DiaViaje` nunca es menor que 1.
+  - **Salidas y reingresos al depósito (PASO 7.c)**: el fin del proceso de carga lo marca el **primer pase a `En tránsito`** (`EstadoViajeTraceEstado.IdEstadoViajeDestino = 90`, fecha UTC, `@FinCarga`;
+    se registra en el log `PASO7C`). Todas las visitas a la geocerca compartida (depósito de salida y de retorno) **anteriores** a ese pase siguen siendo `CARGA`, cada una como fila propia
+    (el reporte muestra que salió y volvió a entrar; `Detalle` dice "Reingreso... (visita N)" y "Salio de la geocerca... y volvio a ingresar"); las posteriores toman el rol alterno (`RETORNO`).
+    La primera visita siempre es operación. Sin pase a `En tránsito`: regla anterior (primera visita = operación, siguientes = rol alterno). `#Tramos` tiene `NroVisita`/`TotVisitas`.
+    La tolerancia y el exceso de YPF suman el tiempo de **todas** las visitas a la parada (el tiempo fuera de la geocerca entre visitas no cuenta; si hay detenido fuera, lo evalúa la regla de detenidos).
+    Pendiente de validar con un viaje real con salida y reingreso. Si hay varios pases a `En tránsito` (varias cargas) se usa el primero.
   - **Combustible una vez por día y por unidad, no por viaje** (PASO 7.a.0): antes de numerar las cargas del viaje se recorren los eventos GPS crudos de la unidad desde las 00:00
     local del primer día del viaje hasta el primer evento del viaje (`#EvPrevio`), con la misma regla de un tramo `COMBUSTIBLE` válido (permanencia ≥ `@MinutosMinPermanencia` y al menos un
     evento detenido). Cada una cuenta como carga previa (`@CombPrevios`) y desplaza el número del día (`NroDelDia`): la primera del viaje ya no es la primera del día.
-    Se usan eventos crudos y no `Z_ItinerarioViaje`, así no depende del orden en que se procesaron los viajes. **Supuesto:** una carga entre viajes (sin viaje activo) también consume la excepción.
+    Se usan eventos crudos y no `Z_ItinerarioViaje`, así no depende del orden en que se procesaron los viajes. **Decisión del usuario (de momento):** una carga entre viajes (sin viaje activo) también consume la excepción; lo conversará con el cliente y avisará si cambia.
     Si la última visita previa es a la misma estación con la que arranca el viaje, es la misma detención y no se cuenta. Se registra en el log (`PASO7A`).
   - **Estación de servicio sin detenerse**: además de pasar a `CARRETEANDO`, el tramo pierde `IdDibujoZona`/`NombreZona`/`IdParada` para que el PASO 7.d lo funda con el carreteando vecino
     (antes quedaba una fila de 1–2 min con el nombre de la estación). **No se aplicó a los pasos fugaces por geocercas de planta/destino** (siguen como fila propia; en el viaje 329958 son 2 filas de 1 min en Planta Añelo): pendiente de decidir.

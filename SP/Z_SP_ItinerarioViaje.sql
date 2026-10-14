@@ -364,7 +364,9 @@ BEGIN
         CAST(NULL AS VARCHAR(12))                       AS Responsable,
         CAST(0 AS INT)                                  AS MinutosDemora,
         CAST(0 AS INT)                                  AS MinutosExentos,
-        CAST(NULL AS VARCHAR(20))                       AS MotivoExencion
+        CAST(NULL AS VARCHAR(20))                       AS MotivoExencion,
+        CAST(NULL AS INT)                               AS NroVisita,
+        CAST(NULL AS INT)                               AS TotVisitas
     INTO #Tramos
     FROM #Eventos E
     GROUP BY E.Grupo, E.Novedad, E.ClaseZona, E.IdDibujoZona, E.NombreZona, E.IdParada;
@@ -519,10 +521,21 @@ BEGIN
       AND Minutos  <= @MinutosDetenido;
 
     /* 7.c  GEOCERCA COMPARTIDA (deposito de salida y de retorno)
-            Una sola zona cumple dos roles segun el momento del viaje. La primera
-            visita es la operacion; las siguientes toman el rol alterno. Resolver
-            esto por tiempo evita que el regreso al deposito se contabilice como
-            una segunda carga. */
+            Una sola zona cumple dos roles segun el momento del viaje. El proceso de carga
+            termina cuando el viaje pasa a En transito (EstadoViajeTraceEstado, fechas UTC):
+            todas las visitas anteriores a ese pase son operacion (el vehiculo pudo salir y
+            volver a entrar antes de terminar de cargar y cada visita queda como una fila
+            propia); las posteriores toman el rol alterno, asi el regreso al deposito no se
+            contabiliza como otra carga. La primera visita siempre es la operacion. Sin pase
+            a En transito: la primera visita es la operacion y las siguientes el rol alterno. */
+    DECLARE @FinCarga DATETIME;
+    SELECT @FinCarga = MIN(TE.Fecha)
+    FROM dbo.EstadoViajeTraceEstado TE WITH (NOLOCK)
+    WHERE TE.IdViaje = @IdViaje AND TE.IdEstadoViajeDestino = 90;
+
+    INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
+    VALUES ('PASO7C', 'Fin de carga (primer pase a En transito, UTC): ' + ISNULL(CONVERT(VARCHAR(19), @FinCarga, 120), 'sin dato'), GETDATE());
+
     ;WITH Visitas AS (
         SELECT T.Orden,
                ROW_NUMBER() OVER (PARTITION BY T.IdDibujoZona ORDER BY T.FechaDesde) AS NroVisita
@@ -534,7 +547,8 @@ BEGIN
         SET T.Novedad = Z.ClaseAlterna
     FROM       #Tramos T
     INNER JOIN Visitas V ON V.Orden    = T.Orden AND V.NroVisita > 1
-    INNER JOIN #Zonas  Z ON Z.IdDibujo = T.IdDibujoZona;
+    INNER JOIN #Zonas  Z ON Z.IdDibujo = T.IdDibujoZona
+    WHERE @FinCarga IS NULL OR T.FechaDesde >= @FinCarga;
 
     /* 7.d  ESPERA SIN TAREA
             Sin parada pendiente por delante, lo que el vehiculo haga detenido ya
@@ -588,6 +602,17 @@ BEGIN
           AND ISNULL(T2.IdDibujoZona, -1) = ISNULL(T.IdDibujoZona, -1)
           AND T2.FechaHasta >= T.FechaHasta
     );
+
+    /* Visitas a cada geocerca de carga, para que el reporte muestre que el vehiculo salio y volvio a entrar */
+    ;WITH Vc AS (
+        SELECT Orden,
+               ROW_NUMBER() OVER (PARTITION BY IdDibujoZona ORDER BY FechaDesde) AS Nro,
+               COUNT(*)     OVER (PARTITION BY IdDibujoZona)                     AS Tot
+        FROM #Tramos
+        WHERE Novedad = 'CARGA'
+    )
+    UPDATE T SET T.NroVisita = V.Nro, T.TotVisitas = V.Tot
+    FROM #Tramos T INNER JOIN Vc V ON V.Orden = T.Orden;
 
     /*==========================================================================
       PASO 7.e - Imputacion de demoras por responsabilidad
@@ -829,9 +854,16 @@ BEGIN
         /* Detalle narrado */
         CASE F.Novedad
             WHEN 'CARGA'
-            THEN 'Ingreso a ' + ISNULL(F.NombreZona, '(sin nombre)') + ' a las ' +
-                 CONVERT(VARCHAR(5), F.DesdeLocal, 108) + ' hs y permanecio ' + F.Duracion +
-                 ' hs. Salio cargado a las ' + CONVERT(VARCHAR(5), F.HastaLocal, 108) + ' hs.'
+            THEN CASE WHEN F.NroVisita > 1 THEN 'Reingreso a ' ELSE 'Ingreso a ' END +
+                 ISNULL(F.NombreZona, '(sin nombre)') + ' a las ' +
+                 CONVERT(VARCHAR(5), F.DesdeLocal, 108) + ' hs' +
+                 CASE WHEN F.NroVisita > 1
+                      THEN ' (visita ' + CAST(F.NroVisita AS VARCHAR(3)) + ': el vehiculo habia salido de la geocerca y volvio a entrar)'
+                      ELSE '' END +
+                 ' y permanecio ' + F.Duracion +
+                 CASE WHEN F.NroVisita < F.TotVisitas
+                      THEN ' hs. Salio de la geocerca a las ' + CONVERT(VARCHAR(5), F.HastaLocal, 108) + ' hs y volvio a ingresar.'
+                      ELSE ' hs. Salio cargado a las ' + CONVERT(VARCHAR(5), F.HastaLocal, 108) + ' hs.' END
             WHEN 'DESCARGA'
             THEN 'Llego a ' + ISNULL(F.NombreZona, '(sin nombre)') + ' a las ' +
                  CONVERT(VARCHAR(5), F.DesdeLocal, 108) + ' hs y permanecio ' + F.Duracion +
