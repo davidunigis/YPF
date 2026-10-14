@@ -19,7 +19,8 @@ ALTER PROCEDURE [dbo].[Z_SP_ItinerarioViaje]
     @MinutosToleranciaOrigen  INT        = NULL, -- NULL = usa @MinutosTolerancia
     @MinutosToleranciaDestino INT        = NULL, -- NULL = usa @MinutosTolerancia
     @MinutosTurno           INT          = 30,  -- cambio de turno: suma maxima de detenidos tolerada en el rango
-    @TurnoSoloExceso        BIT          = 0    -- 0: superado el limite se registra todo; 1: solo el exceso
+    @TurnoSoloExceso        BIT          = 0,   -- 0: superado el limite se registra todo; 1: solo el exceso
+    @MinutosAtras           INT          = 60   -- minutos hacia atras desde el evento de activacion (ingreso previo a la geocerca de carga)
 )
 AS
 BEGIN
@@ -30,6 +31,7 @@ BEGIN
     IF OBJECT_ID('tempdb..#Tramos')  IS NOT NULL DROP TABLE #Tramos;
     IF OBJECT_ID('tempdb..#Ventanas') IS NOT NULL DROP TABLE #Ventanas;
     IF OBJECT_ID('tempdb..#TurnoDet') IS NOT NULL DROP TABLE #TurnoDet;
+    IF OBJECT_ID('tempdb..#EvPrevio') IS NOT NULL DROP TABLE #EvPrevio;
 
     INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
     VALUES ('INICIO', 'Z_SP_ItinerarioViaje | IdViaje: ' + CAST(@IdViaje AS VARCHAR(10)), GETDATE());
@@ -41,7 +43,7 @@ BEGIN
             @DescripcionViaje VARCHAR(250), @IdDibujoOrigen INT, @Origen VARCHAR(150),
             @IdDibujoDestino INT, @Destino VARCHAR(150),
             @IdEventoIni BIGINT, @IdEventoFin BIGINT,
-            @FechaIni DATETIME, @FechaFin DATETIME,
+            @FechaIni DATETIME, @FechaFin DATETIME, @FechaVentana DATETIME,
             @KmTeoricos DECIMAL(12,2), @TiempoEstandar DECIMAL(10,2), @CicloKmTeoricos DECIMAL(12,2),
             @KmViaje DECIMAL(12,2), @MinutosViaje INT,
             @FinUltimaOperacion DATETIME,
@@ -81,10 +83,18 @@ BEGIN
     SELECT @FechaIni = FechaHoraEvento FROM dbo.Evento WITH (NOLOCK) WHERE IdEvento = @IdEventoIni;
     SELECT @FechaFin = FechaHoraEvento FROM dbo.Evento WITH (NOLOCK) WHERE IdEvento = @IdEventoFin;
 
+    /* La ventana de eventos arranca @MinutosAtras antes de la activacion: el viaje puede activarse con el
+       vehiculo ya dentro de la geocerca de carga (la tolerancia cuenta desde el ingreso) y el trayecto
+       hacia ella tambien forma parte del viaje. Sin evento de activacion no se mira hacia atras. */
+    IF @FechaIni IS NOT NULL
+        SET @FechaVentana = DATEADD(MINUTE, -ISNULL(@MinutosAtras, 0), @FechaIni);
+
     IF @FechaIni IS NULL
         SELECT @FechaIni = V.FechaCreacion FROM dbo.Viaje V WITH (NOLOCK) WHERE V.IdViaje = @IdViaje;
     IF @FechaFin IS NULL
         SET @FechaFin = DATEADD(HOUR, 72, @FechaIni);
+    IF @FechaVentana IS NULL
+        SET @FechaVentana = @FechaIni;
 
     SELECT TOP 1
         @KmTeoricos = K.DistanciaKmTeoricos, @TiempoEstandar = K.TiempoEstandar,
@@ -207,11 +217,13 @@ BEGIN
     FROM dbo.Evento E WITH (NOLOCK)
     WHERE E.IdVehiculo      = @IdVehiculo
       AND E.Valido          = 'True'
-      AND E.FechaHoraEvento >= @FechaIni
+      AND E.FechaHoraEvento >= @FechaVentana
       AND E.FechaHoraEvento <= @FechaFin
-      AND (@IdEventoIni IS NULL OR E.IdEvento >= @IdEventoIni);
+      AND (@IdEventoIni IS NULL OR E.FechaHoraEvento < @FechaIni OR E.IdEvento >= @IdEventoIni);
     /* Sin tope superior por IdEvento: los reportes GPS pueden llegar horas despues (el IdEvento
-       se asigna al recibirlos) y una corrida posterior debe poder usarlos. La ventana es temporal. */
+       se asigna al recibirlos) y una corrida posterior debe poder usarlos. La ventana es temporal.
+       La condicion IdEvento >= activacion rige desde la activacion; los eventos de la hora previa
+       (@MinutosAtras) tienen IdEvento menor y no pasan por ella. */
 
     DELETE FROM #Eventos
     WHERE Lat IS NULL OR Lon IS NULL OR Lat = 0 OR Lon = 0
@@ -247,14 +259,14 @@ BEGIN
               + ' -> ' +
             LEFT(CONVERT(VARCHAR(10), L.Hasta, 103), 5) + ' ' + CONVERT(VARCHAR(5), L.Hasta, 108),
             L.Desde, L.Hasta,
-            ISNULL(@FechaIni, GETUTCDATE()), ISNULL(@FechaFin, GETUTCDATE()),
+            ISNULL(@FechaVentana, GETUTCDATE()), ISNULL(@FechaFin, GETUTCDATE()),
             'Sin eventos GPS: el vehiculo no registro eventos GPS validos entre el ' +
               CONVERT(VARCHAR(10), L.Desde, 103) + ' ' + CONVERT(VARCHAR(5), L.Desde, 108) + ' y el ' +
               CONVERT(VARCHAR(10), L.Hasta, 103) + ' ' + CONVERT(VARCHAR(5), L.Hasta, 108) +
               ' (hora local). No se pueden calcular hitos de carga y descarga, detenciones ni kilometros recorridos; solo se informan los datos del viaje.',
             'Sin eventos GPS: kilometros recorridos y demoras no calculables.',
-            0, GETUTCDATE()
-        FROM (SELECT DATEADD(HOUR, @OffsetHoras, ISNULL(@FechaIni, GETUTCDATE())) AS Desde,
+            0, DATEADD(HOUR, @OffsetHoras, GETUTCDATE())
+        FROM (SELECT DATEADD(HOUR, @OffsetHoras, ISNULL(@FechaVentana, GETUTCDATE())) AS Desde,
                      DATEADD(HOUR, @OffsetHoras, ISNULL(@FechaFin, GETUTCDATE())) AS Hasta) L;
 
         GOTO Salidas;
@@ -372,10 +384,15 @@ BEGIN
       AND Minutos < @MinutosMinPermanencia;
 
     /* Paso por una estacion de servicio sin detenerse (o fugaz): no es carga de
-       combustible y no debe consumir la excepcion diaria del PASO 7.a */
+       combustible y no debe consumir la excepcion diaria del PASO 7.a. Se ignora que
+       paso por la estacion: se le quita la identidad de la zona para que el PASO 7.d lo
+       funda con el carreteando de al lado en vez de dejar una fila propia. */
     UPDATE #Tramos
-        SET Novedad   = CASE WHEN VelProm > @VelocidadDetenido THEN 'CARRETEANDO' ELSE 'DETENIDO' END,
-            ClaseZona = NULL
+        SET Novedad      = CASE WHEN VelProm > @VelocidadDetenido THEN 'CARRETEANDO' ELSE 'DETENIDO' END,
+            ClaseZona    = NULL,
+            IdDibujoZona = NULL,
+            NombreZona   = NULL,
+            IdParada     = NULL
     WHERE Novedad = 'COMBUSTIBLE'
       AND (Minutos < @MinutosMinPermanencia OR VelMin > @VelocidadDetenido);
 
@@ -384,13 +401,103 @@ BEGIN
       PASO 7 - Reglas de duracion
     ==========================================================================*/
 
+    /* 7.a.0  Cargas de combustible previas del mismo dia (otros viajes de la unidad)
+              La excepcion es una por dia y por UNIDAD, no por viaje. Se recorren los eventos GPS
+              de la unidad desde las 00:00 (hora local) del primer dia de este viaje hasta el primer
+              evento de este viaje: cada detencion en una estacion de servicio (misma regla que un
+              tramo COMBUSTIBLE valido: permanencia minima y al menos un evento detenido) ya consumio
+              la primera del dia. Se calcula con los eventos crudos y no con Z_ItinerarioViaje, asi
+              no depende del orden en que se procesaron los viajes. */
+    DECLARE @DiaPrimero DATE, @DesdeDia DATETIME, @HastaPrevio DATETIME, @IdZonaIni INT, @CombPrevios INT = 0;
+
+    SELECT @DiaPrimero = MIN(FechaLocal), @HastaPrevio = MIN(FechaHoraEvento) FROM #Eventos;
+    SELECT TOP 1 @IdZonaIni = IdDibujoZona FROM #Eventos ORDER BY Secuencia;
+    SET @DesdeDia = DATEADD(HOUR, -@OffsetHoras, CAST(@DiaPrimero AS DATETIME));
+
+    IF @HastaPrevio > @DesdeDia
+       AND EXISTS (SELECT 1 FROM #Tramos WHERE Novedad = 'COMBUSTIBLE')
+    BEGIN
+        CREATE TABLE #EvPrevio
+        (
+            Secuencia       INT           NOT NULL PRIMARY KEY,
+            FechaHoraEvento DATETIME      NOT NULL,
+            Lat             FLOAT         NULL,
+            Lon             FLOAT         NULL,
+            Velocidad       DECIMAL(10,2) NULL,
+            Punto           GEOGRAPHY     NULL,
+            IdDibujoZona    INT           NULL,
+            ClaseZona       VARCHAR(20)   NULL
+        );
+
+        INSERT INTO #EvPrevio (Secuencia, FechaHoraEvento, Lat, Lon, Velocidad)
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY E.FechaHoraEvento, E.IdEvento),
+            E.FechaHoraEvento,
+            TRY_CAST(REPLACE(REPLACE(ISNULL(CAST(E.Latitud  AS VARCHAR(50)), '0'), ',', '.'), ' ', '') AS FLOAT),
+            TRY_CAST(REPLACE(REPLACE(ISNULL(CAST(E.Longitud AS VARCHAR(50)), '0'), ',', '.'), ' ', '') AS FLOAT),
+            ISNULL(E.Velocidad, 0)
+        FROM dbo.Evento E WITH (NOLOCK)
+        WHERE E.IdVehiculo      = @IdVehiculo
+          AND E.Valido          = 'True'
+          AND E.FechaHoraEvento >= @DesdeDia
+          AND E.FechaHoraEvento <  @HastaPrevio;
+
+        DELETE FROM #EvPrevio
+        WHERE Lat IS NULL OR Lon IS NULL OR Lat = 0 OR Lon = 0
+           OR Lat NOT BETWEEN -90 AND 90 OR Lon NOT BETWEEN -180 AND 180;
+
+        UPDATE #EvPrevio SET Punto = GEOGRAPHY::Point(Lat, Lon, 4326);
+
+        UPDATE E
+            SET E.IdDibujoZona = Z.IdDibujo, E.ClaseZona = Z.ClaseZona
+        FROM #EvPrevio E
+        CROSS APPLY (
+            SELECT TOP 1 ZN.IdDibujo, ZN.ClaseZona
+            FROM #Zonas ZN
+            WHERE ZN.Geografia.MakeValid().STIntersects(E.Punto) = 1
+            ORDER BY ZN.Prioridad, ZN.IdDibujo
+        ) Z;
+
+        /* Visitas consecutivas a una misma zona (o fuera de zonas): el fin de cada una es el inicio
+           de la siguiente; la ultima termina donde empieza este viaje. Si la ultima visita es a la
+           misma estacion con la que arranca este viaje, es la misma detencion y la cuenta el viaje. */
+        ;WITH Isl AS (
+            SELECT Secuencia, FechaHoraEvento, Velocidad, IdDibujoZona, ClaseZona,
+                   ROW_NUMBER() OVER (ORDER BY Secuencia)
+                 - ROW_NUMBER() OVER (PARTITION BY ISNULL(IdDibujoZona, -1) ORDER BY Secuencia) AS G
+            FROM #EvPrevio
+        ),
+        Vis AS (
+            SELECT MIN(Secuencia) AS SecIni, MIN(FechaHoraEvento) AS Desde,
+                   MIN(Velocidad) AS VelMin, MAX(ClaseZona) AS ClaseZona, MAX(IdDibujoZona) AS IdDibujoZona
+            FROM Isl
+            GROUP BY G, ISNULL(IdDibujoZona, -1)
+        ),
+        Fin AS (
+            SELECT SecIni, Desde, VelMin, ClaseZona, IdDibujoZona,
+                   ISNULL(LEAD(Desde) OVER (ORDER BY SecIni), @HastaPrevio)            AS Hasta,
+                   CASE WHEN LEAD(Desde) OVER (ORDER BY SecIni) IS NULL THEN 1 ELSE 0 END AS EsUltima
+            FROM Vis
+        )
+        SELECT @CombPrevios = COUNT(*)
+        FROM Fin
+        WHERE ClaseZona = 'COMBUSTIBLE'
+          AND DATEDIFF(MINUTE, Desde, Hasta) >= @MinutosMinPermanencia
+          AND VelMin <= @VelocidadDetenido
+          AND (EsUltima = 0 OR @IdZonaIni IS NULL OR IdDibujoZona <> @IdZonaIni);
+    END;
+
+    INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
+    VALUES ('PASO7A', 'Combustible | Cargas previas del dia (otros viajes de la unidad): ' + CAST(@CombPrevios AS VARCHAR(5)), GETDATE());
+
     /* 7.a  EXCEPCION COMBUSTIBLE
-            La primera detencion en estacion de servicio de cada dia tolera
-            @MinutosCombustible. Si los supera, es DETENIDO. Las siguientes del
-            mismo dia se evaluan con la regla general. */
+            La primera detencion en estacion de servicio de cada dia (de la unidad, contando las
+            de otros viajes: @CombPrevios) tolera @MinutosCombustible. Si los supera, es DETENIDO.
+            Las siguientes del mismo dia se evaluan con la regla general. */
     ;WITH Comb AS (
         SELECT Orden, Minutos,
-               ROW_NUMBER() OVER (PARTITION BY FechaLocal ORDER BY FechaDesde) AS NroDelDia
+               ROW_NUMBER() OVER (PARTITION BY FechaLocal ORDER BY FechaDesde)
+                 + CASE WHEN FechaLocal = @DiaPrimero THEN @CombPrevios ELSE 0 END AS NroDelDia
         FROM #Tramos
         WHERE Novedad = 'COMBUSTIBLE'
     )
@@ -680,7 +787,8 @@ BEGIN
         CASE WHEN @KmTeoricos IS NULL THEN NULL ELSE @KmViaje - @KmTeoricos END,
 
         ROW_NUMBER() OVER (ORDER BY F.FechaDesde),
-        DATEDIFF(DAY, CAST(DATEADD(HOUR, @OffsetHoras, @FechaIni) AS DATE), CAST(F.DesdeLocal AS DATE)) + 1,
+        CASE WHEN DATEDIFF(DAY, CAST(DATEADD(HOUR, @OffsetHoras, @FechaIni) AS DATE), CAST(F.DesdeLocal AS DATE)) < 0 THEN 1
+             ELSE DATEDIFF(DAY, CAST(DATEADD(HOUR, @OffsetHoras, @FechaIni) AS DATE), CAST(F.DesdeLocal AS DATE)) + 1 END,
         F.Novedad,
 
         CASE F.Novedad
@@ -736,7 +844,9 @@ BEGIN
             THEN 'Detenido ' + F.Duracion + ' hs' +
                  CASE WHEN F.ClaseZona = 'COMBUSTIBLE'
                       THEN ' en la estacion de servicio ' + ISNULL(F.NombreZona, '(sin nombre)') +
-                           ', superando los ' + CAST(@MinutosCombustible AS VARCHAR(5)) + ' min tolerados.'
+                           CASE WHEN F.AplicoExcepcion = 1
+                                THEN ', superando los ' + CAST(@MinutosCombustible AS VARCHAR(5)) + ' min tolerados.'
+                                ELSE ': la excepcion diaria de combustible ya fue consumida por una carga anterior del dia.' END
                       ELSE ', fuera de parada y fuera de estacion de servicio (lat ' +
                            CAST(CAST(F.Lat AS DECIMAL(9,5)) AS VARCHAR(20)) + ', lon ' +
                            CAST(CAST(F.Lon AS DECIMAL(9,5)) AS VARCHAR(20)) + ').' END
@@ -767,7 +877,7 @@ BEGIN
             ELSE NULL
         END,
 
-        F.Eventos, F.Lat, F.Lon, GETUTCDATE(),
+        F.Eventos, F.Lat, F.Lon, DATEADD(HOUR, @OffsetHoras, GETUTCDATE()),
         F.ToleranciaMin, F.Responsable, F.MinutosDemora, F.MinutosExentos, F.MotivoExencion
     FROM Fmt F
     ORDER BY F.FechaDesde;
@@ -828,6 +938,7 @@ BEGIN
     IF OBJECT_ID('tempdb..#Tramos')  IS NOT NULL DROP TABLE #Tramos;
     IF OBJECT_ID('tempdb..#Ventanas') IS NOT NULL DROP TABLE #Ventanas;
     IF OBJECT_ID('tempdb..#TurnoDet') IS NOT NULL DROP TABLE #TurnoDet;
+    IF OBJECT_ID('tempdb..#EvPrevio') IS NOT NULL DROP TABLE #EvPrevio;
 
     INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
     VALUES ('FIN', 'Z_SP_ItinerarioViaje finalizado | IdViaje: ' + CAST(@IdViaje AS VARCHAR(10)), GETDATE());

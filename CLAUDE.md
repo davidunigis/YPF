@@ -41,7 +41,7 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     (`@VelocidadDetenido`, `@MinutosDetenido`=15, `@MinutosCombustible`=30,
     `@MinutosTolerancia`=45, `@MinutosMinPermanencia`, `@OffsetHoras`=-3, `@Debug`,
     y nuevos: `@MinutosToleranciaOrigen`/`@MinutosToleranciaDestino` (NULL = `@MinutosTolerancia`),
-    `@MinutosTurno`=30, `@TurnoSoloExceso`=0). Los nuevos van al final para no romper llamadas posicionales.
+    `@MinutosTurno`=30, `@TurnoSoloExceso`=0, `@MinutosAtras`=60). Los nuevos van al final para no romper llamadas posicionales.
   - Base: `UNIGIS_DataRepository_YPF_ARENAS_QA`.
   - Flujo: encabezado → geocercas (`#Zonas`) → eventos GPS (`#Eventos`) → invasión de geocercas →
     novedad por evento → agrupación en tramos (`#Tramos`) → reglas de duración (PASO 7) →
@@ -55,6 +55,20 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     `Novedad`/`TipoSuceso` = `SIN_EVENTOS_GPS`, `Suceso` = `Sin eventos GPS`, `Orden` 1, `CantidadEventos` 0; `KmRecorridos`, `DesvioKm`, tiempos y demoras quedan `NULL`.
     `KmRecorridos` es numérico, así que la leyenda "Sin eventos GPS" va en `Suceso`/`Detalle` y los reportes la muestran en la columna de km GPS.
     Salta a la etiqueta `Salidas:` (`GOTO`) para devolver igual los 3 resultsets. El log pasa de `ERROR` a `AVISO`.
+  - **Hora previa a la activación** (`@MinutosAtras`=60): la ventana de eventos arranca 60 min antes del evento de activación (`@FechaVentana`), para ver si el vehículo ya estaba
+    dentro de la geocerca de carga (la tolerancia cuenta desde el ingreso) y el trayecto hacia ella (`CARRETEANDO`; los detenidos fuera de geocerca > `@MinutosDetenido` son del transporte).
+    Los eventos previos no pasan por el filtro `IdEvento >= IdEventoActivacion` (tienen IdEvento menor). Sin evento de activación (viaje sin activar) no se mira hacia atrás.
+    Efectos: el primer tramo, `KmRecorridos` y `% Viaje` incluyen esa hora; `DiaViaje` nunca es menor que 1. Limitación: si en esa hora el vehículo entró y salió del depósito
+    varias veces, la primera visita es la que cuenta como carga (PASO 7.c).
+  - **Combustible una vez por día y por unidad, no por viaje** (PASO 7.a.0): antes de numerar las cargas del viaje se recorren los eventos GPS crudos de la unidad desde las 00:00
+    local del primer día del viaje hasta el primer evento del viaje (`#EvPrevio`), con la misma regla de un tramo `COMBUSTIBLE` válido (permanencia ≥ `@MinutosMinPermanencia` y al menos un
+    evento detenido). Cada una cuenta como carga previa (`@CombPrevios`) y desplaza el número del día (`NroDelDia`): la primera del viaje ya no es la primera del día.
+    Se usan eventos crudos y no `Z_ItinerarioViaje`, así no depende del orden en que se procesaron los viajes. **Supuesto:** una carga entre viajes (sin viaje activo) también consume la excepción.
+    Si la última visita previa es a la misma estación con la que arranca el viaje, es la misma detención y no se cuenta. Se registra en el log (`PASO7A`).
+  - **Estación de servicio sin detenerse**: además de pasar a `CARRETEANDO`, el tramo pierde `IdDibujoZona`/`NombreZona`/`IdParada` para que el PASO 7.d lo funda con el carreteando vecino
+    (antes quedaba una fila de 1–2 min con el nombre de la estación). **No se aplicó a los pasos fugaces por geocercas de planta/destino** (siguen como fila propia; en el viaje 329958 son 2 filas de 1 min en Planta Añelo): pendiente de decidir.
+  - **Hora local**: `FechaHoraDesde/Hasta`, `Periodo`, `Detalle` y la fecha de los logs ya salían en hora argentina (`@OffsetHoras`); `FechaDesdeUTC/FechaHastaUTC` son UTC por diseño.
+    `FechaProcesamiento` pasó de `GETUTCDATE()` a hora argentina.
   - Historial: `bc585ed` es la versión original; los cambios van en commits posteriores.
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 
@@ -196,7 +210,7 @@ Verificado con datos reales: el SP desplegado = repo, y una réplica en Python r
 - **Solo documentado, sin cambios de cálculo:** espera en la puerta del destino y origen sin `CARGA`
   → `Recomendaciones/Espera_en_Puerta_y_Geocercas.md`.
 - **Corregido por decisión del usuario:** el SP ya no descarta eventos con `IdEvento > IdEventoFinalizacion` (147 de 388 en este viaje: datos
-  atrasados de 90–234 min, en dos lotes). Ahora filtra por la ventana de tiempo y `IdEvento >= IdEventoActivacion`. Con los 388 eventos el km GPS
+  atrasados de 90–234 min, en dos lotes). Ahora filtra por la ventana de tiempo (desde `@MinutosAtras` antes de la activación) y `IdEvento >= IdEventoActivacion` desde la activación. Con los 388 eventos el km GPS
   sube de 143,3 a 150,6; la detención de 67 min pasa a 68 min.
 - **El SP corre al finalizar el viaje** (confirmado por el usuario), antes de que lleguen los datos atrasados: sin una segunda corrida, el
   cambio de filtro no tiene efecto. Opciones en `Recomendaciones/Datos_Atrasados_y_Momento_de_Ejecucion.md`; **pendiente de decidir, no implementado**.
