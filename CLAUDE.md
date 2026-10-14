@@ -19,6 +19,8 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
 - `Operacion/` — scripts operativos que **escriben** datos. `Reprocesar_Itinerario_Viajes.sql` vuelve a ejecutar el SP para los viajes
   finalizados de un rango de fechas (usar después de desplegar un cambio del SP; en SSMS activar "Descartar resultados después de la ejecución").
   `Reprocesar_Itinerario_Viajes_UM.sql` hace lo mismo para los viajes de la consulta del usuario (`Jornada.IdOperacion = 139` y `Viaje.IdEstadoViaje = 99`), uno a uno, con avance y lista de errores al final (`@Maximo` para probar con pocos).
+- `Entrega/` — los mismos DDL, SP y reportes **sin comentarios**, numerados en el orden de despliegue (01–08), listos para enviar a implementación.
+  Se generan con `python3 Entrega/generar_sin_comentarios.py` (verifica que solo cambien los comentarios); **no se editan a mano**: se regeneran después de tocar `DDL/`, `SP/` o `Reportes/`.
 - `Recomendaciones/` — documentos de recomendaciones para el cliente. Un tema que implica una decisión de
   negocio se documenta acá y **no se implementa hasta que el usuario lo pida**.
 - `Reportes/` — consultas de reporte de UNIGIS (un `.sql` por reporte). Se guardan tal cual
