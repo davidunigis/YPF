@@ -16,6 +16,9 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   **`Extraer_Viaje_Completo.sql` es el script a usar** (reúne los dos anteriores y agrega estado secundario, indicadores, información
   adicional, incidencias y tablas de reglas/alertas; cambiar `@IdViaje`). `Extraer_Datos_Viaje.sql` y `Extraer_Eventos_y_Estados_Viaje.sql`
   quedan como versiones parciales. Se usó con el viaje 329958 (viaje de prueba).
+  `Diagnostico/Consultas/` — consultas **individuales** de solo lectura (una grilla por archivo, para exportar a Excel): `00`–`05` sin viaje (versión desplegada, log, corridas sin fin,
+  viajes sin itinerario, viajes sin GPS, control por viaje) y `10`–`20` por viaje (`@IdViaje` arriba de cada una; cabecera, paradas, estados, filas de Z, log, eventos crudos, eventos con geocerca,
+  combustible previo, otros viajes de la unidad, km teóricos, cambio de turno). La `21` reprocesa con `@Debug = 1` (**escribe**). Índice en `LEEME.md`. Sin validar en SQL Server (solo `sqlglot`).
 - `Operacion/` — scripts operativos que **escriben** datos. `Reprocesar_Itinerario_Viajes.sql` vuelve a ejecutar el SP para los viajes
   finalizados de un rango de fechas (usar después de desplegar un cambio del SP; en SSMS activar "Descartar resultados después de la ejecución").
   `Reprocesar_Itinerario_Viajes_UM.sql` hace lo mismo para los viajes de la consulta del usuario (`Jornada.IdOperacion = 139` y `Viaje.IdEstadoViaje = 99`), uno a uno, con avance y lista de errores al final (`@Maximo` para probar con pocos).
