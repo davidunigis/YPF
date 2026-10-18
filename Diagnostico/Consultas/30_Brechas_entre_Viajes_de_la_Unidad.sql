@@ -8,12 +8,13 @@
     - Viaje anterior de la MISMA unidad (cualquier operacion) que ya habia finalizado
       al activarse este: cuando termino y cuantos minutos antes de la activacion
     - RangoBrecha: SIN VIAJE PREVIO / <1 h / 1-6 h / 6-24 h / >24 h
-    - HoraPreviaPisaAlViajeAnterior = SI: la hora previa actual (60 min) incluye
-      eventos del viaje anterior (se contarian dos veces)
+    - ViajeAnteriorDentroDelTope = SI: el viaje anterior termino dentro de @MinutosAtras
+      antes de la activacion; el SP arranca la ventana en esa finalizacion (con la regla
+      vieja de 60 min fijos, esos eventos se contaban dos veces)
     - ViajesEnCursoAlActivar: otros viajes de la unidad activos en ese momento
   Exportar a Excel y armar una tabla dinamica por RangoBrecha.
 ==============================================================================*/
-DECLARE @Dias INT = 30, @OffsetHoras INT = -3, @MinutosAtras INT = 60;
+DECLARE @Dias INT = 30, @OffsetHoras INT = -3, @MinutosAtras INT = 360;
 
 SELECT V.IdViaje, VH.Dominio, T.RazonSocial AS Transporte,
        DATEADD(HOUR, @OffsetHoras, PUB.Fecha) AS Publicado_Local,
@@ -31,7 +32,7 @@ SELECT V.IdViaje, VH.Dominio, T.RazonSocial AS Transporte,
             WHEN DATEDIFF(MINUTE, PREV.Fin, EA.FechaHoraEvento) < 1440 THEN '6-24 h'
             ELSE '>24 h' END AS RangoBrecha,
        CASE WHEN PREV.IdViaje IS NOT NULL
-             AND PREV.Fin > DATEADD(MINUTE, -@MinutosAtras, EA.FechaHoraEvento) THEN 'SI' ELSE 'NO' END AS HoraPreviaPisaAlViajeAnterior,
+             AND PREV.Fin > DATEADD(MINUTE, -@MinutosAtras, EA.FechaHoraEvento) THEN 'SI' ELSE 'NO' END AS ViajeAnteriorDentroDelTope,
        SOL.N AS ViajesEnCursoAlActivar
 FROM dbo.Viaje AS V WITH (NOLOCK)
 INNER JOIN dbo.Jornada AS J WITH (NOLOCK) ON J.IdJornada = V.IdJornada

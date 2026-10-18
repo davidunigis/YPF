@@ -20,7 +20,9 @@ ALTER PROCEDURE [dbo].[Z_SP_ItinerarioViaje]
     @MinutosToleranciaDestino INT        = NULL,
     @MinutosTurno           INT          = 30,
     @TurnoSoloExceso        BIT          = 0,
-    @MinutosAtras           INT          = 60
+    @MinutosAtras           INT          = 360,
+    @IdOperacion            INT          = 139,
+    @ImputarPrevioPublicacion BIT        = 0
 )
 AS
 BEGIN
@@ -40,7 +42,9 @@ BEGIN
             @DescripcionViaje VARCHAR(250), @IdDibujoOrigen INT, @Origen VARCHAR(150),
             @IdDibujoDestino INT, @Destino VARCHAR(150),
             @IdEventoIni BIGINT, @IdEventoFin BIGINT,
-            @FechaIni DATETIME, @FechaFin DATETIME, @FechaVentana DATETIME,
+            @FechaIni DATETIME, @FechaFin DATETIME, @FechaVentana DATETIME, @FechaPublicado DATETIME,
+            @IdViajePrevio INT, @FinPrevio DATETIME, @MotivoVentana VARCHAR(100),
+            @GeoPrevio GEOGRAPHY, @SecCorte INT, @Recortados INT = 0,
             @KmTeoricos DECIMAL(12,2), @TiempoEstandar DECIMAL(10,2), @CicloKmTeoricos DECIMAL(12,2),
             @KmViaje DECIMAL(12,2), @MinutosViaje INT,
             @FinUltimaOperacion DATETIME,
@@ -80,7 +84,51 @@ BEGIN
     SELECT @FechaFin = FechaHoraEvento FROM dbo.Evento WITH (NOLOCK) WHERE IdEvento = @IdEventoFin;
 
     IF @FechaIni IS NOT NULL
+    BEGIN
         SET @FechaVentana = DATEADD(MINUTE, -ISNULL(@MinutosAtras, 0), @FechaIni);
+        SET @MotivoVentana = 'tope de ' + CAST(ISNULL(@MinutosAtras, 0) AS VARCHAR(10)) + ' min';
+
+        IF ISNULL(@MinutosAtras, 0) > 0
+        BEGIN
+            IF EXISTS (SELECT 1
+                       FROM       dbo.Viaje   V3  WITH (NOLOCK)
+                       INNER JOIN dbo.Jornada J3  WITH (NOLOCK) ON J3.IdJornada = V3.IdJornada
+                       INNER JOIN dbo.Evento  EA3 WITH (NOLOCK) ON EA3.IdEvento = V3.IdEventoActivacion
+                       LEFT  JOIN dbo.Evento  EF3 WITH (NOLOCK) ON EF3.IdEvento = V3.IdEventoFinalizacion
+                       WHERE V3.IdVehiculo = @IdVehiculo
+                         AND V3.IdViaje   <> @IdViaje
+                         AND (@IdOperacion IS NULL OR J3.IdOperacion = @IdOperacion)
+                         AND EA3.FechaHoraEvento <= @FechaIni
+                         AND EA3.FechaHoraEvento >= DATEADD(DAY, -3, @FechaIni)
+                         AND (EF3.FechaHoraEvento > @FechaIni
+                              OR (V3.IdEventoFinalizacion = 0 AND V3.IdEstadoViaje NOT IN (99, 100))))
+            BEGIN
+                SET @FechaVentana = @FechaIni;
+                SET @MotivoVentana = 'hay otro viaje de la unidad activo al activarse este';
+            END
+            ELSE
+            BEGIN
+                SELECT TOP 1 @IdViajePrevio = V2.IdViaje, @FinPrevio = EF2.FechaHoraEvento
+                FROM       dbo.Viaje   V2  WITH (NOLOCK)
+                INNER JOIN dbo.Jornada J2  WITH (NOLOCK) ON J2.IdJornada = V2.IdJornada
+                INNER JOIN dbo.Evento  EF2 WITH (NOLOCK) ON EF2.IdEvento = V2.IdEventoFinalizacion
+                WHERE V2.IdVehiculo = @IdVehiculo
+                  AND V2.IdViaje   <> @IdViaje
+                  AND V2.IdEventoFinalizacion > 0
+                  AND V2.IdEstadoViaje <> 100
+                  AND (@IdOperacion IS NULL OR J2.IdOperacion = @IdOperacion)
+                  AND EF2.FechaHoraEvento <= @FechaIni
+                  AND EF2.FechaHoraEvento >  @FechaVentana
+                ORDER BY EF2.FechaHoraEvento DESC;
+
+                IF @FinPrevio IS NOT NULL
+                BEGIN
+                    SET @FechaVentana = @FinPrevio;
+                    SET @MotivoVentana = 'finalizacion del viaje anterior ' + CAST(@IdViajePrevio AS VARCHAR(12));
+                END;
+            END;
+        END;
+    END;
 
     IF @FechaIni IS NULL
         SELECT @FechaIni = V.FechaCreacion FROM dbo.Viaje V WITH (NOLOCK) WHERE V.IdViaje = @IdViaje;
@@ -88,6 +136,11 @@ BEGIN
         SET @FechaFin = DATEADD(HOUR, 72, @FechaIni);
     IF @FechaVentana IS NULL
         SET @FechaVentana = @FechaIni;
+
+    IF ISNULL(@ImputarPrevioPublicacion, 0) = 0
+        SELECT @FechaPublicado = MIN(TE.Fecha)
+        FROM dbo.EstadoViajeTraceEstado TE WITH (NOLOCK)
+        WHERE TE.IdViaje = @IdViaje AND TE.IdEstadoViajeDestino IN (98, 92);
 
     SELECT TOP 1
         @KmTeoricos = K.DistanciaKmTeoricos, @TiempoEstandar = K.TiempoEstandar,
@@ -202,6 +255,38 @@ BEGIN
     WHERE Lat IS NULL OR Lon IS NULL OR Lat = 0 OR Lon = 0
        OR Lat NOT BETWEEN -90 AND 90 OR Lon NOT BETWEEN -180 AND 180;
 
+    IF @IdViajePrevio IS NOT NULL
+    BEGIN
+        SELECT @GeoPrevio = DB.Geografia.MakeValid()
+        FROM dbo.Dibujo DB WITH (NOLOCK)
+        WHERE DB.IdDibujo = (SELECT TOP 1 C.IdDibujo
+                             FROM dbo.Z_ClasificarParadasViaje(@IdViajePrevio) C
+                             WHERE C.IdDibujo IS NOT NULL
+                             ORDER BY C.Orden DESC);
+
+        IF @GeoPrevio IS NOT NULL
+        BEGIN
+            SELECT @SecCorte = MIN(E.Secuencia)
+            FROM #Eventos E
+            WHERE E.FechaHoraEvento >= @FechaIni
+               OR CASE WHEN GEOGRAPHY::Point(E.Lat, E.Lon, 4326).STIntersects(@GeoPrevio) = 1
+                       THEN CASE WHEN EXISTS (SELECT 1 FROM #Zonas ZN
+                                              WHERE ZN.Geografia.MakeValid().STIntersects(GEOGRAPHY::Point(E.Lat, E.Lon, 4326)) = 1)
+                                 THEN 1 ELSE 0 END
+                       ELSE 1 END = 1;
+
+            DELETE FROM #Eventos
+            WHERE FechaHoraEvento < @FechaIni
+              AND Secuencia < ISNULL(@SecCorte, 2147483647);
+            SET @Recortados = @@ROWCOUNT;
+        END;
+    END;
+
+    INSERT INTO dbo.[Log] (Categoria, Descripcion, FechaHora)
+    VALUES ('PASO1B', 'Ventana de eventos | desde ' + CONVERT(VARCHAR(19), @FechaVentana, 120) + ' UTC | motivo: ' + ISNULL(@MotivoVentana, 'sin evento de activacion') +
+            ' | eventos recortados del viaje anterior: ' + CAST(@Recortados AS VARCHAR(10)) +
+            ' | publicado/programado (UTC): ' + ISNULL(CONVERT(VARCHAR(19), @FechaPublicado, 120), 'sin dato o no aplica'), GETDATE());
+
     IF NOT EXISTS (SELECT 1 FROM #Eventos)
     BEGIN
 
@@ -282,6 +367,7 @@ BEGIN
                 WHEN ClaseZona = 'DESCARGA'    THEN 'DESCARGA'
                 WHEN ClaseZona = 'RETORNO'     THEN 'RETORNO'
                 WHEN ClaseZona = 'COMBUSTIBLE' THEN 'COMBUSTIBLE'
+                WHEN Velocidad <= @VelocidadDetenido AND FechaHoraEvento < @FechaPublicado THEN 'DETENIDO_SIN_VIAJE'
                 WHEN Velocidad <= @VelocidadDetenido THEN 'DETENIDO'
                 ELSE 'CARRETEANDO'
             END;
@@ -436,8 +522,8 @@ BEGIN
     UPDATE T
         SET T.Novedad = CASE
                             WHEN C.NroDelDia = 1 AND C.Minutos <= @MinutosCombustible THEN 'COMBUSTIBLE'
-                            WHEN C.NroDelDia = 1                                      THEN 'DETENIDO'
-                            WHEN C.Minutos    >  @MinutosDetenido                     THEN 'DETENIDO'
+                            WHEN C.NroDelDia = 1 THEN CASE WHEN T.FechaDesde < @FechaPublicado THEN 'DETENIDO_SIN_VIAJE' ELSE 'DETENIDO' END
+                            WHEN C.Minutos    >  @MinutosDetenido THEN CASE WHEN T.FechaDesde < @FechaPublicado THEN 'DETENIDO_SIN_VIAJE' ELSE 'DETENIDO' END
                             ELSE 'COMBUSTIBLE'
                         END,
             T.AplicoExcepcion = CASE WHEN C.NroDelDia = 1 THEN 1 ELSE 0 END
@@ -445,7 +531,7 @@ BEGIN
 
     UPDATE #Tramos
         SET Novedad = 'CARRETEANDO'
-    WHERE Novedad   = 'DETENIDO'
+    WHERE Novedad   IN ('DETENIDO', 'DETENIDO_SIN_VIAJE')
       AND ClaseZona IS NULL
       AND Minutos  <= @MinutosDetenido;
 
@@ -642,7 +728,8 @@ BEGIN
             ' | Carreteando: ' + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='CARRETEANDO') AS VARCHAR(5)) +
             ' | Detenido: '    + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='DETENIDO') AS VARCHAR(5)) +
             ' | Combustible: ' + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='COMBUSTIBLE') AS VARCHAR(5)) +
-            ' | Espera s/tarea: ' + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='ESPERA_SIN_TAREA') AS VARCHAR(5)), GETDATE());
+            ' | Espera s/tarea: ' + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='ESPERA_SIN_TAREA') AS VARCHAR(5)) +
+            ' | Detenido sin viaje: ' + CAST((SELECT COUNT(*) FROM #Tramos WHERE Novedad='DETENIDO_SIN_VIAJE') AS VARCHAR(5)), GETDATE());
 
     IF @Debug = 1
     BEGIN
@@ -706,6 +793,7 @@ BEGIN
             WHEN 'DESCARGA'         THEN 'Descarga'
             WHEN 'CARRETEANDO'      THEN 'Carreteando'
             WHEN 'DETENIDO'         THEN 'Detenido' + CASE WHEN F.TotalTipo > 1 THEN ' #' + CAST(F.NroTipo AS VARCHAR(5)) ELSE '' END
+            WHEN 'DETENIDO_SIN_VIAJE' THEN 'Detenido sin viaje asignado'
             WHEN 'COMBUSTIBLE'      THEN 'Carga de combustible'
             WHEN 'ESPERA_SIN_TAREA' THEN 'Espera sin tarea'
             WHEN 'RETORNO'          THEN 'En deposito de retorno'
@@ -753,7 +841,12 @@ BEGIN
                  CONVERT(VARCHAR(5), F.DesdeLocal, 108) + ' hs y permanecio ' + F.Duracion +
                  ' hs. Salio descargado a las ' + CONVERT(VARCHAR(5), F.HastaLocal, 108) + ' hs.'
             WHEN 'CARRETEANDO'
-            THEN 'Carreteando ' + F.Duracion + ' hs, ' + CAST(F.Kms AS VARCHAR(20)) + ' km (promedio ' +
+            THEN CASE WHEN F.FechaDesde < @FechaIni
+                      THEN CASE WHEN F.FechaHasta <= @FechaIni
+                                THEN 'Retorno previo a la activacion, hacia el deposito de salida. '
+                                ELSE 'Incluye el retorno previo a la activacion (desde las ' + CONVERT(VARCHAR(5), F.DesdeLocal, 108) + ' hs). ' END
+                      ELSE '' END +
+                 'Carreteando ' + F.Duracion + ' hs, ' + CAST(F.Kms AS VARCHAR(20)) + ' km (promedio ' +
                  CAST(CAST(F.VelProm AS INT) AS VARCHAR(5)) + ' km/h). Acumulado: ' +
                  CAST(CAST(F.KmAcum AS DECIMAL(12,2)) AS VARCHAR(20)) + ' km.'
             WHEN 'DETENIDO'
@@ -766,6 +859,10 @@ BEGIN
                       ELSE ', fuera de parada y fuera de estacion de servicio (lat ' +
                            CAST(CAST(F.Lat AS DECIMAL(9,5)) AS VARCHAR(20)) + ', lon ' +
                            CAST(CAST(F.Lon AS DECIMAL(9,5)) AS VARCHAR(20)) + ').' END
+            WHEN 'DETENIDO_SIN_VIAJE'
+            THEN 'Detenido ' + F.Duracion + ' hs antes de que el viaje estuviera publicado o programado (lat ' +
+                 CAST(CAST(F.Lat AS DECIMAL(9,5)) AS VARCHAR(20)) + ', lon ' +
+                 CAST(CAST(F.Lon AS DECIMAL(9,5)) AS VARCHAR(20)) + '). No se imputa a nadie.'
             WHEN 'COMBUSTIBLE'
             THEN 'Carga de combustible en ' + ISNULL(F.NombreZona, '(sin nombre)') + ' durante ' + F.Duracion + ' hs.' +
                  CASE WHEN F.AplicoExcepcion = 1
@@ -782,6 +879,8 @@ BEGIN
             THEN 'Excede la tolerancia de ' + CAST(F.ToleranciaMin AS VARCHAR(5)) + ' min: la permanencia total en esta parada fue de ' +
                  CAST(F.MinutosOperacion AS VARCHAR(10)) + ' min (' +
                  CAST(F.MinutosOperacion - F.ToleranciaMin AS VARCHAR(10)) + ' min de exceso).'
+            WHEN F.Novedad = 'DETENIDO_SIN_VIAJE'
+            THEN 'El viaje todavia no estaba publicado ni programado: no se imputa al transporte ni a YPF.'
             WHEN F.Novedad = 'ESPERA_SIN_TAREA'
             THEN 'Derivado por ausencia de parada pendiente. La plataforma no registra un hito propio de espera sin tarea.'
             WHEN F.Novedad = 'DETENIDO' AND F.MinutosExentos > 0

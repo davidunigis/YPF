@@ -47,7 +47,7 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     (`@VelocidadDetenido`, `@MinutosDetenido`=15, `@MinutosCombustible`=30,
     `@MinutosTolerancia`=45, `@MinutosMinPermanencia`, `@OffsetHoras`=-3, `@Debug`,
     y nuevos: `@MinutosToleranciaOrigen`/`@MinutosToleranciaDestino` (NULL = `@MinutosTolerancia`),
-    `@MinutosTurno`=30, `@TurnoSoloExceso`=0, `@MinutosAtras`=60). Los nuevos van al final para no romper llamadas posicionales.
+    `@MinutosTurno`=30, `@TurnoSoloExceso`=0, `@MinutosAtras`=360, `@IdOperacion`=139, `@ImputarPrevioPublicacion`=0). Los nuevos van al final para no romper llamadas posicionales.
   - Base: `UNIGIS_DataRepository_YPF_ARENAS_QA`.
   - Flujo: encabezado → geocercas (`#Zonas`) → eventos GPS (`#Eventos`) → invasión de geocercas →
     novedad por evento → agrupación en tramos (`#Tramos`) → reglas de duración (PASO 7) →
@@ -61,10 +61,15 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
     `Novedad`/`TipoSuceso` = `SIN_EVENTOS_GPS`, `Suceso` = `Sin eventos GPS`, `Orden` 1, `CantidadEventos` 0; `KmRecorridos`, `DesvioKm`, tiempos y demoras quedan `NULL`.
     `KmRecorridos` es numérico, así que la leyenda "Sin eventos GPS" va en `Suceso`/`Detalle` y los reportes la muestran en la columna de km GPS.
     Salta a la etiqueta `Salidas:` (`GOTO`) para devolver igual los 3 resultsets. El log pasa de `ERROR` a `AVISO`.
-  - **Hora previa a la activación** (`@MinutosAtras`=60): la ventana de eventos arranca 60 min antes del evento de activación (`@FechaVentana`), para ver si el vehículo ya estaba
-    dentro de la geocerca de carga (la tolerancia cuenta desde el ingreso) y el trayecto hacia ella (`CARRETEANDO`; los detenidos fuera de geocerca > `@MinutosDetenido` son del transporte).
-    Los eventos previos no pasan por el filtro `IdEvento >= IdEventoActivacion` (tienen IdEvento menor). Sin evento de activación (viaje sin activar) no se mira hacia atrás.
-    Efectos: el primer tramo, `KmRecorridos` y `% Viaje` incluyen esa hora; `DiaViaje` nunca es menor que 1.
+  - **Ventana hacia atrás de la activación** (`@MinutosAtras`=360, `@FechaVentana`): hasta 6 h antes del evento de activación, para ver si el vehículo ya estaba dentro de la geocerca de carga (la tolerancia cuenta
+    desde el ingreso) y el **retorno** al depósito de salida. Se acota para no contar dos veces lo de otro viaje (solo viajes de la operación `@IdOperacion`=139, Última Milla; NULL = todas):
+    si la unidad finalizó un viaje dentro del tope, la ventana arranca en esa finalización; si hay otro viaje activo al activarse este, no se mira hacia atrás; sin viaje anterior o más viejo que el tope, rige el tope.
+    Se recortan los eventos iniciales que sigan dentro de la geocerca de la última parada del viaje anterior y no estén en una zona de este viaje (nunca desde la activación).
+    Los eventos previos no pasan por el filtro `IdEvento >= IdEventoActivacion`. Sin evento de activación (viaje sin activar) no se mira hacia atrás. Log `PASO1B`.
+    Efectos: el primer tramo, `KmRecorridos` y `% Viaje` incluyen esa ventana; `DiaViaje` nunca es menor que 1; los tramos previos dicen "Retorno previo a la activacion" en `Detalle`.
+    Análisis y casos límite en `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md`. Un viaje finalizado manualmente sin evento de finalización no se ve como viaje anterior.
+  - **Detenido antes de publicar el viaje** (`@ImputarPrevioPublicacion`=0): lo detenido fuera de geocerca (o por combustible excedido) antes del primer pase a Publicado (98) o Programado (92) en `EstadoViajeTraceEstado`
+    sale como `DETENIDO_SIN_VIAJE` ("Detenido sin viaje asignado"): se muestra, **no se imputa** a nadie y los reportes (que suman `Novedad = 'DETENIDO'`) no lo cuentan. Con 1 se imputa como antes. A confirmar con el cliente.
   - **Salidas y reingresos al depósito (PASO 7.c)**: el fin del proceso de carga lo marca el **primer pase a `En tránsito`** (`EstadoViajeTraceEstado.IdEstadoViajeDestino = 90`, fecha UTC, `@FinCarga`;
     se registra en el log `PASO7C`). Todas las visitas a la geocerca compartida (depósito de salida y de retorno) **anteriores** a ese pase siguen siendo `CARGA`, cada una como fila propia
     (el reporte muestra que salió y volvió a entrar; `Detalle` dice "Reingreso... (visita N)" y "Salio de la geocerca... y volvio a ingresar"); las posteriores toman el rol alterno (`RETORNO`).
@@ -255,7 +260,7 @@ Verificado con datos reales: el SP desplegado = repo, y una réplica en Python r
   que no puede con el procedimiento completo) y con simulaciones de la lógica en SQLite.
   **Probar siempre en la base QA antes de pasar a producción.**
 
-## Ventana hacia atrás y retorno (pendiente de decisión)
-El cliente pidió ver hasta 6 h antes de la activación, acotadas por la finalización del último viaje anterior de la unidad, para capturar el retorno a la planta.
-Análisis, casos límite y preguntas en `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md` (**no implementado**). Hallazgo: la hora previa actual (60 min) puede pisar al viaje anterior
-y duplicar su espera en el destino como `DETENIDO` del transporte; mientras se decide se puede usar `@MinutosAtras = 0`. Medir con `Diagnostico/Consultas/30_Brechas_entre_Viajes_de_la_Unidad.sql`.
+## Ventana hacia atrás y retorno (aplicado)
+Pedido del cliente: hasta 6 h antes de la activación, acotadas por el último viaje anterior de la unidad, para capturar el retorno a la planta. Aplicado en el SP (ver "Ventana hacia atrás de la activación"),
+solo con viajes de Última Milla por indicación del usuario. Preguntas abiertas y casos límite en `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md`. Requiere reprocesar los viajes.
+Medir con `Diagnostico/Consultas/30_Brechas_entre_Viajes_de_la_Unidad.sql`.

@@ -1,6 +1,21 @@
 # Recomendaciones: ventana hacia atrás de la activación y retorno a la planta
 
-Estado: **análisis y propuesta. No se cambió el SP por este tema** (decisión pendiente).
+Estado: **aplicado en el SP** (versión con ventana acotada). El usuario pidió aplicar lo recomendado y aclaró que **solo se consideran viajes de la operación de Última Milla** (`@IdOperacion = 139`) para buscar el viaje anterior y los viajes activos.
+
+### Lo que quedó aplicado
+- `@MinutosAtras` pasa de 60 a **360** (tope de 6 h).
+- **Viaje anterior** (recomendación del punto 4.2/5): de la misma unidad, Última Milla, no cancelado, con evento de finalización, finalizado antes de la activación y dentro del tope → la ventana arranca en esa finalización. Más viejo que el tope, o sin viaje anterior → rige el tope.
+- **Viaje activo al activarse este** (de Última Milla, activado en los 3 días previos y sin finalizar) → no se mira hacia atrás. Un viaje en estado 99/100 sin evento de finalización no cuenta como activo.
+- **Recorte**: los eventos iniciales de la ventana que sigan dentro de la geocerca de la última parada del viaje anterior y no estén en una zona de este viaje se descartan (nunca desde la activación). Si es el mismo depósito, no se recorta.
+- **Opción B** (punto 6): lo detenido fuera de geocerca **antes del primer pase a Publicado (98) o Programado (92)** sale como `DETENIDO_SIN_VIAJE` ("Detenido sin viaje asignado"): se muestra, no se imputa a nadie y los reportes no lo suman (suman solo `DETENIDO`). Se desactiva con `@ImputarPrevioPublicacion = 1`.
+- **Detalle** (punto 7): los tramos de la ventana previa dicen "Retorno previo a la activacion, hacia el deposito de salida" (o "Incluye el retorno previo..." si el tramo sigue después de la activación). No se cambiaron los nombres de las novedades.
+- Log `PASO1B`: desde dónde arranca la ventana y por qué, eventos recortados y fecha de publicación/programación.
+
+### Sigue abierto (preguntas del punto 9)
+1 (se aplicó la opción B por defecto, a confirmar con el cliente), 3 (cierres manuales tardíos), 4 (si 6 h alcanza) y 5 (tiempo a reconocer negativo). Los viajes finalizados manualmente **sin evento de finalización** no se ven como viaje anterior (caso 6 de la tabla).
+
+---
+*(Lo que sigue es el análisis original que dio origen al cambio.)*
 Origen: reunión con el cliente (la hora previa a la activación no les funciona bien).
 Datos reales usados: viaje 329958 (`Diagnostico/Analisis_Viaje_329958.md`). Consulta para medir con datos de la base: `Diagnostico/Consultas/30_Brechas_entre_Viajes_de_la_Unidad.sql`.
 
@@ -61,7 +76,7 @@ Opciones:
 ## 7. Cómo se vería el retorno en el reporte
 Hoy el camino a la geocerca de carga sale como `CARRETEANDO`, y las paradas largas fuera de geocerca como `DETENIDO`. El cliente habla de "retorno". Propuesta: **no cambiar los nombres de las novedades**; que los tramos de la ventana previa lleven en `Detalle` la frase "Retorno hacia el depósito de salida (previo a la activación)" para que se distingan. Si prefieren una novedad propia (`RETORNO_PREVIO`), hay que revisar que ningún reporte la tome por error (los reportes filtran por valores concretos de `Novedad`, así que no se contaría en demoras).
 
-## 8. Plan de cambio (cuando se decida)
+## 8. Plan de cambio (aplicado, ver arriba)
 1. Parámetro nuevo: la ventana pasa a 360 min máximo (`@MinutosAtras = 360`).
 2. En el encabezado del SP: buscar el viaje anterior finalizado de la unidad, el inicio efectivo = el mayor entre `activación − 360 min` y su finalización; si hay un viaje activo, inicio = activación.
 3. Recortar los eventos iniciales dentro de la geocerca del último destino del viaje anterior que no estén en una zona del viaje actual.
@@ -76,5 +91,5 @@ Hoy el camino a la geocerca de carga sale como `CARRETEANDO`, y las paradas larg
 4. ¿6 horas alcanza como tope o hay retornos más largos?
 5. Si el tiempo a reconocer da negativo (las demoras del transporte superan los excedentes), ¿se muestra el valor negativo o se deja en 0?
 
-## 10. Mientras se decide
-La hora previa actual (`@MinutosAtras = 60`) puede duplicar tiempo del viaje anterior (punto 2). Si el cliente ya está viendo diferencias, se puede dejar en 0 (`@MinutosAtras = 0`, sin mirar hacia atrás) hasta implementar la regla nueva; no cambia nada más.
+## 10. Reprocesar
+La regla nueva cambia lo ya cargado: hay que volver a ejecutar el SP (`Operacion/Reprocesar_Itinerario_Viajes_UM.sql`). Para volver al comportamiento anterior sin tocar el código: `@MinutosAtras = 60` (sin las acotaciones el solape con el viaje anterior vuelve) o `@MinutosAtras = 0` (sin mirar hacia atrás).

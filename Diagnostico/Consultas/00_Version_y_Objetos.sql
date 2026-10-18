@@ -30,10 +30,12 @@ FROM (
             (2, 'MinutosDemora',            'imputacion de demoras (PASO 7.e)'),
             (3, 'VelMin',                   'estacion de servicio sin detenerse'),
             (4, 'IdDibujoZona = NULL',      'estacion sin detenerse se funde con el carreteando'),
-            (5, '@MinutosAtras',            'hora previa a la activacion'),
+            (5, '@MinutosAtras',            'ventana hacia atras desde la activacion'),
             (6, '@CombPrevios',             'combustible una vez por dia y por unidad'),
             (7, '@FinCarga',                'visitas al deposito segun el pase a En transito'),
-            (8, 'SIN_EVENTOS_GPS',          'fila para viajes sin eventos GPS')
+            (8, 'SIN_EVENTOS_GPS',          'fila para viajes sin eventos GPS'),
+            (9, '@IdViajePrevio',           'ventana acotada por el viaje anterior de la unidad'),
+            (10, 'DETENIDO_SIN_VIAJE',      'detenido antes de publicar el viaje no se imputa')
          ) M (N, Marca, Funcion)
     UNION ALL
     SELECT 30 + X.N, 'Z_ItinerarioViaje.' + X.Col, X.Tipo,

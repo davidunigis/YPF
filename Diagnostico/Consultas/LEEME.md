@@ -35,6 +35,6 @@ Las consultas por viaje empiezan con `DECLARE @IdViaje INT = 330178;`: cambiar e
 ## Para decidir cuánto mirar hacia atrás de la activación
 | Archivo | Responde |
 |---|---|
-| `30_Brechas_entre_Viajes_de_la_Unidad` | Una fila por viaje UM: cuándo terminó el viaje anterior de la misma unidad, cuánto pasó entre publicar/programar y activar, y si la hora previa actual pisa al viaje anterior. Ver `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md` |
+| `30_Brechas_entre_Viajes_de_la_Unidad` | Una fila por viaje UM: cuándo terminó el viaje anterior de la misma unidad, cuánto pasó entre publicar/programar y activar, y si el viaje anterior cae dentro del tope de la ventana hacia atrás. Ver `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md` |
 
 Orden sugerido para un viaje con error: `10`, `13`, `14`, `12`, `16` (y `11`, `19`, `17`, `18` según el caso).
