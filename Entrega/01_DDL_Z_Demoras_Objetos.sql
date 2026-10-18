@@ -1,6 +1,3 @@
-USE [UNIGIS_DataRepository_YPF_ARENAS_QA]
-GO
-
 IF OBJECT_ID('dbo.Z_CambioTurnoTransporte', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Z_CambioTurnoTransporte

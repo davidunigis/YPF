@@ -1,6 +1,3 @@
-USE [UNIGIS_DataRepository_YPF_ARENAS_QA]
-GO
-
 IF EXISTS (SELECT 1 FROM sys.columns
            WHERE object_id = OBJECT_ID('dbo.Z_ItinerarioViaje') AND name = 'KmTeoricos'
              AND system_type_id = TYPE_ID('int'))

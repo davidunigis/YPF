@@ -1,7 +1,9 @@
 """Genera los scripts de Entrega/ sin comentarios a partir de DDL/, SP/ y Reportes/.
 Uso (desde la raiz del repo):  python3 Entrega/generar_sin_comentarios.py
 Los archivos de Entrega/ no se editan a mano: se regeneran. Cada uno se verifica comparando los
-tokens de codigo antes y despues (si cambia algo mas que los comentarios, aborta)."""
+tokens de codigo antes y despues (si cambia algo mas que los comentarios, aborta).
+Van a produccion: se quita el 'USE [UNIGIS_DataRepository_YPF_ARENAS_QA]' + GO de los originales, asi que se
+ejecutan conectado a la base de produccion."""
 import os, re
 
 def scan(src):
@@ -75,7 +77,10 @@ ARCHIVOS = [
     ('Reportes/Reporte_CertificacionViajesUM.sql',         '06_Reporte_CertificacionViajesUM.sql'),
     ('Reportes/Reporte_ResumenViajesFinalizados.sql',      '07_Reporte_ResumenViajesFinalizados.sql'),
     ('Reportes/Reporte_ParteDemorasPorUnidad.sql',         '08_Reporte_ParteDemorasPorUnidad.sql'),
+    ('Operacion/Reprocesar_Itinerario_Viajes_UM.sql',      '10_Reprocesar_Itinerario_Viajes_UM.sql'),
 ]
+
+USE_QA = re.compile(r'^USE \[UNIGIS_DataRepository_YPF_ARENAS_QA\]\s*\nGO[ \t]*\r?\n', re.M)
 
 def update_reporte(consulta, id_reporte):
     """UPDATE que carga la consulta de un reporte en la tabla Reporte (comillas simples duplicadas)."""
@@ -85,9 +90,10 @@ def update_reporte(consulta, id_reporte):
 if __name__ == '__main__':
     raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for origen, destino in ARCHIVOS:
-        s = open(os.path.join(raiz, origen), encoding='utf-8').read()
+        s = USE_QA.sub('', open(os.path.join(raiz, origen), encoding='utf-8').read().replace('\r\n', '\n'))
         r = quitar(s)
         assert tokens(s) == tokens(r), origen + ': los tokens de codigo cambiaron'
+        assert 'ARENAS_QA' not in r, origen + ': queda una referencia a la base de QA'
         assert not [x for t, x in scan(r) if t in ('lc', 'bc')], origen + ': quedaron comentarios'
         open(os.path.join(raiz, 'Entrega', destino), 'w', encoding='utf-8', newline='\n').write(r)
         print(destino, len(s.splitlines()), '->', len(r.splitlines()), 'lineas')

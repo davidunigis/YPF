@@ -24,6 +24,7 @@ Esta rama agrupa los SP que llenan tablas de **reportes de áreas**.
   `Reprocesar_Itinerario_Viajes_UM.sql` hace lo mismo para los viajes de la consulta del usuario (`Jornada.IdOperacion = 139` y `Viaje.IdEstadoViaje = 99`), uno a uno, con avance y lista de errores al final (`@Maximo` para probar con pocos).
 - `Entrega/` — los mismos DDL, SP y reportes **sin comentarios**, numerados en el orden de despliegue (01–08), listos para enviar a implementación.
   Se generan con `python3 Entrega/generar_sin_comentarios.py` (verifica que solo cambien los comentarios); **no se editan a mano**: se regeneran después de tocar `DDL/`, `SP/` o `Reportes/`.
+  **Van a producción: no llevan `USE [..._QA]`** (el generador lo quita de los originales); se ejecutan conectado a la base de producción. `10_Reprocesar_Itinerario_Viajes_UM.sql` es el reproceso (sin comentarios).
   `09_UPDATE_Reporte_286_Consolidado.sql` carga la consulta del consolidado en la tabla `Reporte` (`UPDATE Reporte SET ConsultaSQL = '...' WHERE IdReporte = 286`, comillas duplicadas; también lo genera el script).
 - `Recomendaciones/` — documentos de recomendaciones para el cliente. Un tema que implica una decisión de
   negocio se documenta acá y **no se implementa hasta que el usuario lo pida**.
