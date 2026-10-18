@@ -1,6 +1,9 @@
 /**DECLARACION DE VARIABLES***/
 DECLARE @FECHA_DESDE DATETIME
-    ,@FECHA_HASTA DATETIME;
+    ,@FECHA_HASTA DATETIME
+    ,@TOLERANCIA INT;
+
+SET @TOLERANCIA = 45;
 
 SET @FECHA_DESDE = CONVERT(DATETIME, CAST('!!FECHA_DESDE!!' AS VARCHAR), 103);
 SET @FECHA_HASTA = CONVERT(DATETIME, CAST('!!FECHA_HASTA!!' AS VARCHAR), 103);
@@ -20,6 +23,12 @@ SELECT V.IdViaje
     ,CASE WHEN Z.SinGPS = 0 THEN dbo.Z_MinutosAHHMM(Z.MinYPF) END AS [Demoras Responsabilidad YPF]
     ,CASE WHEN Z.SinGPS = 0 THEN dbo.Z_MinutosAHHMM(Z.MinExceso) END AS [Exceso sobre Tolerancia YPF]
     ,CASE WHEN Z.SinGPS = 0 THEN dbo.Z_MinutosAHHMM(Z.MinTransporte) END AS [Demoras Responsabilidad Transporte]
+    ,CASE WHEN Z.SinGPS = 0 THEN ISNULL(P.MinOrigen, 0) END AS [Tiempo Total Origen (min)]
+    ,CASE WHEN Z.SinGPS = 0 THEN ISNULL(P.ExcOrigen, 0) END AS [Tiempo Excedente Origen (min)]
+    ,CASE WHEN Z.SinGPS = 0 THEN ISNULL(P.MinDestino, 0) END AS [Tiempo Total Destino (min)]
+    ,CASE WHEN Z.SinGPS = 0 THEN ISNULL(P.ExcDestino, 0) END AS [Tiempo Excedente Destino (min)]
+    ,CASE WHEN Z.SinGPS = 0 THEN Z.MinTransporte END AS [Demoras Responsabilidad Transporte (min)]
+    ,CASE WHEN Z.SinGPS = 0 THEN ISNULL(P.ExcOrigen, 0) + ISNULL(P.ExcDestino, 0) - Z.MinTransporte END AS [Tiempo a Reconocer (min)]
 FROM dbo.Viaje AS V WITH (NOLOCK)
 INNER JOIN dbo.Jornada AS J WITH (NOLOCK) ON J.IdJornada = V.IdJornada
 INNER JOIN dbo.EstadoViaje AS EV WITH (NOLOCK) ON EV.IdEstadoViaje = V.IdEstadoViaje
@@ -44,6 +53,22 @@ CROSS APPLY (
     FROM dbo.Z_ItinerarioViaje AS I WITH (NOLOCK)
     WHERE I.IdViaje = V.IdViaje
     ) AS Z
+OUTER APPLY (
+    SELECT SUM(CASE WHEN S.Novedad = 'CARGA' THEN S.Minutos ELSE 0 END) AS MinOrigen
+        ,SUM(CASE WHEN S.Novedad = 'CARGA' AND S.Minutos > @TOLERANCIA THEN S.Minutos - @TOLERANCIA ELSE 0 END) AS ExcOrigen
+        ,SUM(CASE WHEN S.Novedad = 'DESCARGA' THEN S.Minutos ELSE 0 END) AS MinDestino
+        ,SUM(CASE WHEN S.Novedad = 'DESCARGA' AND S.Minutos > @TOLERANCIA THEN S.Minutos - @TOLERANCIA ELSE 0 END) AS ExcDestino
+    FROM (
+        SELECT I.Novedad
+            ,I.IdDibujo
+            ,SUM(I.TiempoMinutos) AS Minutos
+        FROM dbo.Z_ItinerarioViaje AS I WITH (NOLOCK)
+        WHERE I.IdViaje = V.IdViaje
+            AND I.Novedad IN ('CARGA', 'DESCARGA')
+        GROUP BY I.Novedad
+            ,I.IdDibujo
+        ) AS S
+    ) AS P
 OUTER APPLY (
     SELECT TOP 1 DATEADD(HOUR, - 3, T2.Fecha) AS TransitoLocal
     FROM dbo.EstadoViajeTraceEstado AS T2 WITH (NOLOCK)

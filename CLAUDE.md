@@ -111,6 +111,7 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
 - El encabezado `[Excede 45 min]` de la salida 2 sigue escrito fijo.
 
 ## Reportes en alcance
+Nombres de trabajo acordados con el usuario: **reporte de detalle** = `Reporte_ItinerarioViaje`; **consolidado** = `Reporte_ItinerarioViajeConsolidado`.
 - `Reporte_ItinerarioViaje` — detalle cronológico del viaje (los detenidos con minutos, período y
   geoposición del documento). Consulta `Z_ItinerarioViaje` + `Viaje` + `Jornada` + `EstadoViaje`.
   Se agregaron: Responsable Demora, Minutos Imputados, Minutos Exentos, Motivo Exencion, Latitud, Longitud.
@@ -168,6 +169,12 @@ Completa por tramo: `ToleranciaMin`, `Responsable` (`YPF` | `TRANSPORTE` | NULL)
   - Un viaje que no se reprocesó con el SP nuevo muestra `00:00` en `Exceso sobre Tolerancia YPF`.
   - **Viaje con fila `SIN_EVENTOS_GPS`**: `Kilometros Recorridos GPS` muestra `Sin eventos GPS` (la columna pasa a texto: `CONVERT(VARCHAR(20), KmRecorridos)`) y las 3 demoras
     salen **vacías** (no `00:00`: no se pueden calcular). Origen/destino salen de `Z.Origen`/`Z.Destino` (no hay filas `CARGA`/`DESCARGA`) y los km teóricos se buscan igual.
+  - **Columnas en minutos (pedido del cliente)**, al final y en este orden: `Tiempo Total Origen (min)`, `Tiempo Excedente Origen (min)`, `Tiempo Total Destino (min)`,
+    `Tiempo Excedente Destino (min)`, `Demoras Responsabilidad Transporte (min)` y `Tiempo a Reconocer (min)` = excedente origen + excedente destino − demoras del transporte.
+    Total = suma de `TiempoMinutos` de las filas `CARGA` (origen) o `DESCARGA` (destino). Excedente = `MAX(0, total − @TOLERANCIA)` (`@TOLERANCIA = 45`, variable al inicio del reporte), **calculado por parada**
+    (por `IdDibujo`; las visitas a la misma geocerca se suman antes de restar) y sumado por lado; con una sola parada por lado es el total menos 45. Se calcula a partir de las filas crudas, no de `MinutosDemora`.
+    El tiempo a reconocer **no se acota en 0** (puede ser negativo): pendiente de confirmar con el cliente. Las 3 columnas HH:MM anteriores no se tocaron (las dos de YPF son redundantes con las nuevas):
+    pendiente de decidir si se reemplazan o convierten a minutos. Con fila `SIN_EVENTOS_GPS` las 6 salen vacías.
 
 ## Documento de negocio (fuente de reglas)
 `YPF_ARENAS_TO_BE_03-06_UNIGIS_V3` (Documento To Be, v3, 04-06-2026). No está en el repo (tiene
@@ -247,3 +254,8 @@ Verificado con datos reales: el SP desplegado = repo, y una réplica en Python r
 - No hay SQL Server en el entorno de Claude: los cambios se validan con parseo de sintaxis (`sqlglot`,
   que no puede con el procedimiento completo) y con simulaciones de la lógica en SQLite.
   **Probar siempre en la base QA antes de pasar a producción.**
+
+## Ventana hacia atrás y retorno (pendiente de decisión)
+El cliente pidió ver hasta 6 h antes de la activación, acotadas por la finalización del último viaje anterior de la unidad, para capturar el retorno a la planta.
+Análisis, casos límite y preguntas en `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md` (**no implementado**). Hallazgo: la hora previa actual (60 min) puede pisar al viaje anterior
+y duplicar su espera en el destino como `DETENIDO` del transporte; mientras se decide se puede usar `@MinutosAtras = 0`. Medir con `Diagnostico/Consultas/30_Brechas_entre_Viajes_de_la_Unidad.sql`.

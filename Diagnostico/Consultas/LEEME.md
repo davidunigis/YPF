@@ -32,4 +32,9 @@ Las consultas por viaje empiezan con `DECLARE @IdViaje INT = 330178;`: cambiar e
 | `20_Cambio_de_Turno_del_Transporte` | Rangos de cambio de turno del transportista |
 | `21_Reprocesar_con_Debug` | **Escribe.** Reprocesa el viaje y devuelve zonas, tramos y eventos del SP |
 
+## Para decidir cuánto mirar hacia atrás de la activación
+| Archivo | Responde |
+|---|---|
+| `30_Brechas_entre_Viajes_de_la_Unidad` | Una fila por viaje UM: cuándo terminó el viaje anterior de la misma unidad, cuánto pasó entre publicar/programar y activar, y si la hora previa actual pisa al viaje anterior. Ver `Recomendaciones/Ventana_Hacia_Atras_y_Retorno.md` |
+
 Orden sugerido para un viaje con error: `10`, `13`, `14`, `12`, `16` (y `11`, `19`, `17`, `18` según el caso).
