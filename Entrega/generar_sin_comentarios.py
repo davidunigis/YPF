@@ -77,6 +77,11 @@ ARCHIVOS = [
     ('Reportes/Reporte_ParteDemorasPorUnidad.sql',         '08_Reporte_ParteDemorasPorUnidad.sql'),
 ]
 
+def update_reporte(consulta, id_reporte):
+    """UPDATE que carga la consulta de un reporte en la tabla Reporte (comillas simples duplicadas)."""
+    return "UPDATE Reporte\nSET ConsultaSQL = '" + consulta.rstrip('\n').replace("'", "''") + "'\nWHERE IdReporte = " + str(id_reporte) + ";\n"
+
+
 if __name__ == '__main__':
     raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for origen, destino in ARCHIVOS:
@@ -86,3 +91,8 @@ if __name__ == '__main__':
         assert not [x for t, x in scan(r) if t in ('lc', 'bc')], origen + ': quedaron comentarios'
         open(os.path.join(raiz, 'Entrega', destino), 'w', encoding='utf-8', newline='\n').write(r)
         print(destino, len(s.splitlines()), '->', len(r.splitlines()), 'lineas')
+    consolidado = open(os.path.join(raiz, 'Entrega', '05_Reporte_ItinerarioViajeConsolidado.sql'), encoding='utf-8').read()
+    upd = update_reporte(consolidado, 286)
+    assert not [x for t, x in scan(upd) if t in ('lc', 'bc')], 'el UPDATE tiene comentarios'
+    open(os.path.join(raiz, 'Entrega', '09_UPDATE_Reporte_286_Consolidado.sql'), 'w', encoding='utf-8', newline='\n').write(upd)
+    print('09_UPDATE_Reporte_286_Consolidado.sql', len(upd.splitlines()), 'lineas')
