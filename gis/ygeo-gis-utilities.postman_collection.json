@@ -1,0 +1,97 @@
+{
+  "info": {
+    "name": "YPF GIS - CAS Optimax (gis-utilities-api)",
+    "description": "Requests de la documentacion tecnica \"GIS - CAS Optimax\" (v3, 24/07/2026).\n\nVariables de coleccion:\n- base_url: DEV https://gis-utilities-api-des.grupo.ypf.com | TEST https://gis-utilities-api-tst.grupo.ypf.com (PROD no figura en el documento).\n- ygeo_api_key: API key del entorno elegido. No se guarda en este archivo; cargarla en Postman (variable de coleccion o de entorno).\n\nAutenticacion: API Key en el header ygeo-api-key.\nLos hosts son internos de YPF (grupo.ypf.com): hace falta estar en la red/VPN.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "ygeo-api-key", "type": "string" },
+      { "key": "value", "value": "{{ygeo_api_key}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://gis-utilities-api-des.grupo.ypf.com", "type": "string" },
+    { "key": "ygeo_api_key", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Ultima posicion",
+      "description": "Devuelve la ultima posicion (lat/long) de uno o mas moviles. Requiere al menos 1 patente.",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"patentes\": [\n    \"AB123CD\",\n    \"AE456FG\"\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/v1/Ruteo/UltimaPosicion",
+          "host": ["{{base_url}}"],
+          "path": ["v1", "Ruteo", "UltimaPosicion"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK (ejemplo del documento)",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"data\": [\n    {\n      \"patente\": \"AB123CD\",\n      \"latitud\": -45.84540176,\n      \"longitud\": -67.47380066,\n      \"mensaje\": null\n    },\n    {\n      \"patente\": \"AE456FG\",\n      \"latitud\": -45.84540176,\n      \"longitud\": -67.47380066,\n      \"mensaje\": \"registro no encontrado.\"\n    }\n  ],\n  \"error\": false,\n  \"message\": null,\n  \"statusCode\": 200\n}"
+        },
+        {
+          "name": "404 Not Found (ejemplo del documento)",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"data\": null,\n  \"error\": true,\n  \"message\": \"registros no encontrados\",\n  \"statusCode\": 404\n}"
+        }
+      ]
+    },
+    {
+      "name": "Calculo ETA",
+      "description": "Devuelve ETA y distancia aproximada para una ruta.\n\n- tipo_ruteo: \"convencional\" o \"emergencia\" (el documento muestra el valor en minuscula en el ejemplo y capitalizado en las notas; tambien nombra la propiedad como tipo_ruta en las notas).\n- stops: minimo 2 y maximo 5 puntos.\n- La respuesta trae tiempo y distancia como texto (\"12 min\", \"8.5 km\").",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tipo_ruteo\": \"convencional\",\n  \"stops\": [\n    { \"latitud\": -34.6037, \"longitud\": -58.3816 },\n    { \"latitud\": -34.9205, \"longitud\": -57.9536 }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/v1/Ruteo/ObtenerEta",
+          "host": ["{{base_url}}"],
+          "path": ["v1", "Ruteo", "ObtenerEta"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK (ejemplo del documento)",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"data\": {\n    \"tiempo\": \"12 min\",\n    \"distancia\": \"8.5 km\",\n    \"message\": \"Ruta optima calculada con exito.\"\n  },\n  \"error\": false,\n  \"message\": null,\n  \"statusCode\": 200\n}"
+        },
+        {
+          "name": "400 Bad Request (ejemplo del documento)",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"data\": null,\n  \"error\": true,\n  \"message\": \"No se pudo determinar la ruta.\",\n  \"statusCode\": 400\n}"
+        }
+      ]
+    }
+  ]
+}
