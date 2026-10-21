@@ -1,9 +1,9 @@
 /*==============================================================================================
   Eliminar_Operacion_141.sql
 
-  Borra Viajes, Paradas, Ordenes y Pedidos de una operacion (@IdOperacion) y TODAS las filas que
-  dependen de ellos. NO borra la operacion ni sus Jornadas: la Jornada solo se usa para ubicar los
-  viajes de la operacion (Viaje.IdJornada -> Jornada.IdOperacion).
+  Borra Jornadas, Viajes, Paradas, Ordenes y Pedidos de una operacion (@IdOperacion) y TODAS las
+  filas que dependen de ellos. NO borra la operacion en si (su registro). Con @BorrarJornadas = 0
+  las Jornadas se conservan y solo se usan para ubicar los viajes (Viaje.IdJornada -> Jornada.IdOperacion).
   Las tablas dependientes no se listan a mano: se descubren solas
   recorriendo las foreign keys de la base (sys.foreign_keys), nivel por nivel, y se borran de las
   hojas hacia las raices.
@@ -19,7 +19,7 @@
 
   SEGURIDAD
     - Si hay filas de OTRAS operaciones que dependen de lo que se va a borrar (ej. una orden de
-      otra operacion asociada a un viaje de la 141), el script se cancela sin tocar nada y
+      otra operacion dentro de una jornada o asociada a un viaje de la 141), el script se cancela sin tocar nada y
       muestra cuales son.
     - Un Pedido que tambien tiene ordenes de otras operaciones NO se borra (se conserva).
     - Cualquier error (FK, trigger, bloqueo) hace ROLLBACK de todo.
@@ -46,6 +46,7 @@ SET ANSI_NULLS ON;
 ------------------------------------------------------------------------------------------
 DECLARE @IdOperacion INT = 141;
 DECLARE @Ejecutar    BIT = 0;   -- 0 = simulacion (ROLLBACK al final) | 1 = borrado real (COMMIT)
+DECLARE @BorrarJornadas BIT = 1;   -- 1 = borrar tambien las Jornadas de la operacion | 0 = conservarlas
 DECLARE @BuscarSinFK BIT = 1;   -- 1 = buscar tablas con columnas IdViaje/IdOrden/... sin FK declarada
 
 ------------------------------------------------------------------------------------------
@@ -59,6 +60,7 @@ SELECT @sql += N'DROP TABLE ' + QUOTENAME(name) + N';'
 FROM tempdb.sys.tables WHERE name LIKE REPLACE(@Pref, N'_', N'[_]') + N'%';
 IF @sql <> N'' EXEC (@sql);
 
+IF OBJECT_ID('tempdb..#SemJornada') IS NOT NULL DROP TABLE #SemJornada;
 IF OBJECT_ID('tempdb..#SemViaje')   IS NOT NULL DROP TABLE #SemViaje;
 IF OBJECT_ID('tempdb..#SemParada')  IS NOT NULL DROP TABLE #SemParada;
 IF OBJECT_ID('tempdb..#SemOrden')   IS NOT NULL DROP TABLE #SemOrden;
@@ -72,12 +74,13 @@ IF OBJECT_ID('tempdb..#Excepcion')  IS NOT NULL DROP TABLE #Excepcion;
 IF OBJECT_ID('tempdb..#Plan')       IS NOT NULL DROP TABLE #Plan;
 IF OBJECT_ID('tempdb..#Cand')       IS NOT NULL DROP TABLE #Cand;
 
-CREATE TABLE #SemViaje   (Id BIGINT NOT NULL PRIMARY KEY);   -- ids a borrar, uno por tabla raiz
+CREATE TABLE #SemJornada (Id BIGINT NOT NULL PRIMARY KEY);   -- ids a borrar, uno por tabla raiz
+CREATE TABLE #SemViaje   (Id BIGINT NOT NULL PRIMARY KEY);
 CREATE TABLE #SemParada  (Id BIGINT NOT NULL PRIMARY KEY);
 CREATE TABLE #SemOrden   (Id BIGINT NOT NULL PRIMARY KEY);
 CREATE TABLE #SemPedido  (Id BIGINT NOT NULL PRIMARY KEY);
 
-CREATE TABLE #Raiz (Ord INT, Esq SYSNAME, Tabla SYSNAME, Sem SYSNAME, Filtro NVARCHAR(MAX), ColId SYSNAME NULL);
+CREATE TABLE #Raiz (Ord INT, Esq SYSNAME, Tabla SYSNAME, Sem SYSNAME, Filtro NVARCHAR(MAX), Borrar BIT NOT NULL, ColId SYSNAME NULL);
 
 CREATE TABLE #Nodo (
     Id INT IDENTITY(1,1) PRIMARY KEY, ObjectId INT NOT NULL, Esq SYSNAME, Tabla SYSNAME,
@@ -112,14 +115,15 @@ CREATE TABLE #Excepcion (Esq SYSNAME, Tabla SYSNAME, Obj INT NULL);
 -- INSERT #Excepcion (Esq, Tabla) VALUES (N'dbo', N'Vehiculo');
 
 -- Tablas raiz y como se decide que filas se borran (T = la tabla raiz).
---   Viaje: los de las jornadas de la operacion (las jornadas NO se borran).  Parada: las de esos viajes.
---   Orden: por IdOperacion.
+--   Jornada/Orden: por IdOperacion.  Viaje: las de esas jornadas.  Parada: las de esos viajes.
 --   Pedido: los de esas ordenes (y los que tengan Pedido.IdOperacion = @IdOperacion, si existe la columna).
-INSERT #Raiz (Ord, Esq, Tabla, Sem, Filtro) VALUES
- (1, N'dbo', N'Viaje',  N'#SemViaje',  N'T.IdJornada IN (SELECT j.IdJornada FROM dbo.Jornada j WHERE j.IdOperacion = @IdOperacion)'),
- (2, N'dbo', N'Parada', N'#SemParada', N'T.IdViaje IN (SELECT Id FROM #SemViaje)'),
- (3, N'dbo', N'Orden',  N'#SemOrden',  N'T.IdOperacion = @IdOperacion'),
- (4, N'dbo', N'Pedido', N'#SemPedido', N'T.IdPedido IN (SELECT o.IdPedido FROM dbo.Orden o WHERE o.IdPedido IS NOT NULL AND o.IdOperacion = @IdOperacion)');
+--   Borrar = 0 (Jornada con @BorrarJornadas = 0): se calcula la lista pero la tabla no se borra.
+INSERT #Raiz (Ord, Esq, Tabla, Sem, Filtro, Borrar) VALUES
+ (1, N'dbo', N'Jornada', N'#SemJornada', N'T.IdOperacion = @IdOperacion', @BorrarJornadas),
+ (2, N'dbo', N'Viaje',   N'#SemViaje',   N'T.IdJornada IN (SELECT Id FROM #SemJornada)', 1),
+ (3, N'dbo', N'Parada',  N'#SemParada',  N'T.IdViaje IN (SELECT Id FROM #SemViaje)', 1),
+ (4, N'dbo', N'Orden',   N'#SemOrden',   N'T.IdOperacion = @IdOperacion', 1),
+ (5, N'dbo', N'Pedido',  N'#SemPedido',  N'T.IdPedido IN (SELECT o.IdPedido FROM dbo.Orden o WHERE o.IdPedido IS NOT NULL AND o.IdOperacion = @IdOperacion)', 1);
 
 IF COL_LENGTH(N'dbo.Pedido', N'IdOperacion') IS NOT NULL
     UPDATE #Raiz SET Filtro = Filtro + N' OR T.IdOperacion = @IdOperacion' WHERE Tabla = N'Pedido';
@@ -199,7 +203,7 @@ BEGIN TRY
 
     ----- 3. Tablas alcanzadas: se parte de las raices y se baja por las FK -----
     INSERT #Nodo (ObjectId, Esq, Tabla, EsRaiz, Sem, ColId)
-    SELECT OBJECT_ID(QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla)), Esq, Tabla, 1, Sem, ColId FROM #Raiz ORDER BY Ord;
+    SELECT OBJECT_ID(QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla)), Esq, Tabla, 1, Sem, ColId FROM #Raiz WHERE Borrar = 1 ORDER BY Ord;
 
     WHILE 1 = 1
     BEGIN
