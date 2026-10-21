@@ -38,7 +38,7 @@ BEGIN
                0,
                GETUTCDATE(),
                GETUTCDATE(),
-               'Se cambia el estado de la OT a OT En Proceso porque se genero el pedido ' + CONVERT(VARCHAR(20), @IdPedido),
+               'Cambio automatico a OT En Proceso por generacion del pedido ' + CONVERT(VARCHAR(20), @IdPedido),
                'PENDIENTE',
                0
         FROM Orden o WITH (NOLOCK)
