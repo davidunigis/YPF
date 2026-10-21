@@ -31,6 +31,11 @@
     - Una tabla maestra con FK opcional hacia lo borrado (ej. un vehiculo con "viaje actual")
       aparece en el resumen con Revisar = 'FK opcional'. Si no se debe borrar, declararla en
       #Excepcion: ahi se pone NULL la referencia en lugar de borrar la fila.
+    - Referencias circulares entre tablas (ej. Viaje -> Parada -> Viaje): el script las resuelve solo.
+      Desactiva (NOCHECK) la FK que cierra el ciclo durante la transaccion y la revalida al final
+      (Fase 5). Esto toma un bloqueo de esquema sobre esas tablas y requiere permiso ALTER; el
+      resultado "FK desactivadas temporalmente" las lista. Si el script se corta, el ROLLBACK
+      las deja como estaban.
     - Todo corre en UNA transaccion: con muchos millones de filas puede crecer mucho el log y
       bloquear tablas. Correr en ventana de mantenimiento, idealmente con la plataforma detenida.
     - Los triggers de DELETE de las tablas siguen disparandose.
@@ -71,6 +76,7 @@ IF OBJECT_ID('tempdb..#Arista')     IS NOT NULL DROP TABLE #Arista;
 IF OBJECT_ID('tempdb..#AristaCol')  IS NOT NULL DROP TABLE #AristaCol;
 IF OBJECT_ID('tempdb..#AristaManual') IS NOT NULL DROP TABLE #AristaManual;
 IF OBJECT_ID('tempdb..#Excepcion')  IS NOT NULL DROP TABLE #Excepcion;
+IF OBJECT_ID('tempdb..#Alc')        IS NOT NULL DROP TABLE #Alc;
 IF OBJECT_ID('tempdb..#Plan')       IS NOT NULL DROP TABLE #Plan;
 IF OBJECT_ID('tempdb..#Cand')       IS NOT NULL DROP TABLE #Cand;
 
@@ -84,14 +90,20 @@ CREATE TABLE #Raiz (Ord INT, Esq SYSNAME, Tabla SYSNAME, Sem SYSNAME, Filtro NVA
 
 CREATE TABLE #Nodo (
     Id INT IDENTITY(1,1) PRIMARY KEY, ObjectId INT NOT NULL, Esq SYSNAME, Tabla SYSNAME,
-    EsRaiz BIT NOT NULL, Sem SYSNAME NULL, ColId SYSNAME NULL, Nivel INT NOT NULL DEFAULT 0,
-    KTabla SYSNAME NULL, KCols NVARCHAR(MAX) NULL, Miembro NVARCHAR(MAX) NULL,
+    EsRaiz BIT NOT NULL, Sem SYSNAME NULL, ColId SYSNAME NULL,
+    Nivel INT NOT NULL DEFAULT 0,       -- orden de borrado (padres con nivel menor que sus hijos)
+    NivelK INT NOT NULL DEFAULT 0,      -- orden en que se calculan las claves a borrar
+    KTabla SYSNAME NULL, KCols NVARCHAR(MAX) NULL, KIgual NVARCHAR(MAX) NULL, Miembro NVARCHAR(MAX) NULL,
     Via NVARCHAR(MAX) NULL, Revisar VARCHAR(20) NULL);
 
 CREATE TABLE #Arista (   -- relacion hijo (H) -> padre (P)
     IdArista INT PRIMARY KEY, Origen VARCHAR(10), Nombre SYSNAME, ObjH INT, ObjP INT,
+    Enforza BIT NOT NULL DEFAULT 1,     -- 1 = FK activa (condiciona el orden de borrado)
+    NoConfiable BIT NOT NULL DEFAULT 0, -- FK que ya estaba sin validar (is_not_trusted)
+    Rota BIT NOT NULL DEFAULT 0,        -- 1 = FK del ciclo que se desactiva temporalmente
     Cruce NVARCHAR(MAX) NULL, ColsH NVARCHAR(MAX) NULL, SetNull NVARCHAR(MAX) NULL, Obligatoria BIT NULL);
 CREATE TABLE #AristaCol (IdArista INT, Ord INT, ColH SYSNAME, ColP SYSNAME);
+CREATE TABLE #Alc (Desde INT NOT NULL, Hasta INT NOT NULL, PRIMARY KEY (Desde, Hasta));   -- alcanzabilidad entre tablas
 
 CREATE TABLE #Plan (
     Seq INT IDENTITY(1,1) PRIMARY KEY, Fase TINYINT, Nivel INT, NodoId INT NULL,
@@ -173,8 +185,9 @@ BEGIN TRY
     SET @PedidosConservados = @@ROWCOUNT;
 
     ----- 2. Relaciones (FK + manuales) -----
-    INSERT #Arista (IdArista, Origen, Nombre, ObjH, ObjP)
-    SELECT fk.object_id, 'FK', fk.name, fk.parent_object_id, fk.referenced_object_id
+    INSERT #Arista (IdArista, Origen, Nombre, ObjH, ObjP, Enforza, NoConfiable)
+    SELECT fk.object_id, 'FK', fk.name, fk.parent_object_id, fk.referenced_object_id,
+           CASE WHEN fk.is_disabled = 1 THEN 0 ELSE 1 END, fk.is_not_trusted
     FROM sys.foreign_keys fk
     WHERE fk.parent_object_id <> fk.referenced_object_id;      -- las auto-referencias no se usan
 
@@ -190,10 +203,10 @@ BEGIN TRY
                   OR COL_LENGTH(QUOTENAME(m.EsqP) + N'.' + QUOTENAME(m.TblP), m.ColP) IS NULL)
         THROW 50002, N'#AristaManual: hay tablas o columnas que no existen.', 1;
 
-    INSERT #Arista (IdArista, Origen, Nombre, ObjH, ObjP)
+    INSERT #Arista (IdArista, Origen, Nombre, ObjH, ObjP, Enforza)      -- sin constraint: no condiciona el orden
     SELECT -m.Id, 'MANUAL', m.TblH + N'.' + m.ColH,
            OBJECT_ID(QUOTENAME(m.EsqH) + N'.' + QUOTENAME(m.TblH)),
-           OBJECT_ID(QUOTENAME(m.EsqP) + N'.' + QUOTENAME(m.TblP))
+           OBJECT_ID(QUOTENAME(m.EsqP) + N'.' + QUOTENAME(m.TblP)), 0
     FROM #AristaManual m;
     INSERT #AristaCol (IdArista, Ord, ColH, ColP) SELECT -Id, 1, ColH, ColP FROM #AristaManual;
 
@@ -222,22 +235,6 @@ BEGIN TRY
            AND NOT EXISTS (SELECT 1 FROM #Excepcion e WHERE e.Obj = a.ObjH));
     DELETE c FROM #AristaCol c WHERE NOT EXISTS (SELECT 1 FROM #Arista a WHERE a.IdArista = c.IdArista);
 
-    -- nivel = distancia maxima a una raiz; los padres siempre tienen nivel menor que sus hijos
-    DECLARE @Iter INT = 0, @Cambios INT = 1;
-    WHILE @Cambios > 0
-    BEGIN
-        UPDATE h SET Nivel = x.Nv
-        FROM #Nodo h
-        CROSS APPLY (SELECT MAX(p.Nivel) + 1 AS Nv
-                     FROM #Arista a JOIN #Nodo p ON p.ObjectId = a.ObjP
-                     WHERE a.ObjH = h.ObjectId) x
-        WHERE x.Nv > h.Nivel;
-        SET @Cambios = @@ROWCOUNT;
-        SET @Iter += 1;
-        IF @Iter > (SELECT COUNT(*) FROM #Nodo) + 1
-            THROW 50003, N'Hay dependencias circulares entre las tablas alcanzadas; no se puede ordenar el borrado.', 1;
-    END
-
     ----- 4. Predicados (T = tabla borrada, K = claves del padre) -----
     UPDATE #Nodo SET KTabla = @Pref + CAST(Id AS NVARCHAR(10));
 
@@ -248,18 +245,25 @@ BEGIN TRY
         ColsH   = STUFF((SELECT N', ' + c.ColH
                          FROM #AristaCol c WHERE c.IdArista = a.IdArista ORDER BY c.Ord
                          FOR XML PATH(N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 2, N''),
-        SetNull = STUFF((SELECT N', ' + QUOTENAME(c.ColH) + N' = NULL'
-                         FROM #AristaCol c WHERE c.IdArista = a.IdArista ORDER BY c.Ord
+        SetNull = STUFF((SELECT N', ' + QUOTENAME(c.ColH) + N' = NULL'          -- basta anular las columnas que aceptan NULL
+                         FROM #AristaCol c JOIN sys.columns sc ON sc.object_id = a.ObjH AND sc.name = c.ColH
+                         WHERE c.IdArista = a.IdArista AND sc.is_nullable = 1 ORDER BY c.Ord
                          FOR XML PATH(N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 2, N''),
         Obligatoria = CASE WHEN EXISTS (SELECT 1 FROM #AristaCol c
                                         JOIN sys.columns sc ON sc.object_id = a.ObjH AND sc.name = c.ColH
                                         WHERE c.IdArista = a.IdArista AND sc.is_nullable = 1) THEN 0 ELSE 1 END
     FROM #Arista a;
 
-    UPDATE n SET KCols = STUFF((SELECT DISTINCT N', ' + QUOTENAME(c.ColP)
-                                FROM #Arista a JOIN #AristaCol c ON c.IdArista = a.IdArista
-                                WHERE a.ObjP = n.ObjectId
-                                FOR XML PATH(N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 2, N'')
+    UPDATE n SET
+        KCols  = STUFF((SELECT DISTINCT N', ' + QUOTENAME(c.ColP)
+                        FROM #Arista a JOIN #AristaCol c ON c.IdArista = a.IdArista
+                        WHERE a.ObjP = n.ObjectId
+                        FOR XML PATH(N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 2, N''),
+        KIgual = STUFF((SELECT DISTINCT N' AND (X.' + QUOTENAME(c.ColP) + N' = T.' + QUOTENAME(c.ColP)
+                                      + N' OR (X.' + QUOTENAME(c.ColP) + N' IS NULL AND T.' + QUOTENAME(c.ColP) + N' IS NULL))'
+                        FROM #Arista a JOIN #AristaCol c ON c.IdArista = a.IdArista
+                        WHERE a.ObjP = n.ObjectId
+                        FOR XML PATH(N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 5, N'')
     FROM #Nodo n;
 
     UPDATE #Nodo SET Miembro = N'T.' + QUOTENAME(ColId) + N' IN (SELECT Id FROM ' + Sem + N')' WHERE EsRaiz = 1;
@@ -288,13 +292,100 @@ BEGIN TRY
         THROW 50005, @msg, 1;
     END
 
+    ----- 4b. Ciclos de FK y orden de borrado -----
+    -- Si las tablas se apuntan en circulo (ej. Viaje -> Parada -> Viaje) no hay orden posible de borrado.
+    -- Se elige una FK del ciclo y se la desactiva SOLO durante la transaccion (Fase 3); al final se
+    -- revalida (Fase 5). Si algo falla, el ROLLBACK la deja como estaba.
+    DECLARE @Iter INT, @Cambios INT, @NNodos INT = (SELECT COUNT(*) FROM #Nodo), @CicloK BIT = 0;
+    WHILE 1 = 1
+    BEGIN
+        TRUNCATE TABLE #Alc;
+        INSERT #Alc (Desde, Hasta) SELECT DISTINCT ObjH, ObjP FROM #Arista WHERE Enforza = 1 AND Rota = 0;
+        WHILE 1 = 1
+        BEGIN
+            INSERT #Alc (Desde, Hasta)
+            SELECT DISTINCT a.Desde, b.Hasta FROM #Alc a JOIN #Alc b ON b.Desde = a.Hasta
+            WHERE NOT EXISTS (SELECT 1 FROM #Alc x WHERE x.Desde = a.Desde AND x.Hasta = b.Hasta);
+            IF @@ROWCOUNT = 0 BREAK;
+        END
+
+        IF NOT EXISTS (SELECT 1 FROM #Alc WHERE Desde = Hasta) BREAK;      -- sin ciclos
+
+        -- una FK esta en un ciclo si su tabla padre alcanza de vuelta a su tabla hija
+        UPDATE #Arista SET Rota = 1
+        WHERE IdArista = (SELECT TOP (1) c.IdArista FROM #Arista c
+                          WHERE c.Origen = 'FK' AND c.Enforza = 1 AND c.Rota = 0
+                            AND EXISTS (SELECT 1 FROM #Alc r WHERE r.Desde = c.ObjP AND r.Hasta = c.ObjH)
+                          ORDER BY c.IdArista);
+        IF @@ROWCOUNT = 0
+        BEGIN
+            SELECT [Ciclo de FK sin salida] = OBJECT_SCHEMA_NAME(c.ObjH) + N'.' + OBJECT_NAME(c.ObjH), Columnas = c.ColsH, ApuntaA = OBJECT_NAME(c.ObjP), c.Origen
+            FROM #Arista c WHERE c.Enforza = 1 AND c.Rota = 0
+              AND EXISTS (SELECT 1 FROM #Alc r WHERE r.Desde = c.ObjP AND r.Hasta = c.ObjH);
+            THROW 50003, N'Hay dependencias circulares entre tablas que no se pueden resolver (ver resultado "Ciclo de FK sin salida").', 1;
+        END
+    END
+
+    -- Nivel: orden de borrado (hijos primero). Se ignoran las FK desactivadas y las del ciclo.
+    SET @Iter = 0; SET @Cambios = 1;
+    WHILE @Cambios > 0
+    BEGIN
+        UPDATE h SET Nivel = x.Nv
+        FROM #Nodo h
+        CROSS APPLY (SELECT MAX(p.Nivel) + 1 AS Nv
+                     FROM #Arista a JOIN #Nodo p ON p.ObjectId = a.ObjP
+                     WHERE a.ObjH = h.ObjectId AND a.Enforza = 1 AND a.Rota = 0) x
+        WHERE x.Nv > h.Nivel;
+        SET @Cambios = @@ROWCOUNT;
+        SET @Iter += 1;
+        IF @Iter > @NNodos + 1
+            THROW 50003, N'No se pudo ordenar el borrado de las tablas (dependencias circulares).', 1;
+    END
+
+    -- NivelK: orden en que se calculan las claves. Una tabla dependiente se define por sus padres
+    -- (cualquier relacion, tambien las manuales). Si dos dependientes se definen entre si, las claves
+    -- se calculan por iteracion hasta que no aparezcan filas nuevas (@CicloK = 1).
+    SET @Iter = 0; SET @Cambios = 1;
+    WHILE @Cambios > 0
+    BEGIN
+        UPDATE h SET NivelK = x.Nv
+        FROM #Nodo h
+        CROSS APPLY (SELECT MAX(p.NivelK) + 1 AS Nv
+                     FROM #Arista a JOIN #Nodo p ON p.ObjectId = a.ObjP
+                     WHERE a.ObjH = h.ObjectId) x
+        WHERE h.EsRaiz = 0 AND x.Nv > h.NivelK;
+        SET @Cambios = @@ROWCOUNT;
+        SET @Iter += 1;
+        IF @Iter > @NNodos + 1 BEGIN SET @CicloK = 1; BREAK; END
+    END
+
     ----- 5. Plan de ejecucion -----
     -- Fase 1: guardar las claves de lo que se va a borrar, de arriba hacia abajo
-    INSERT #Plan (Fase, Nivel, NodoId, Esq, Tabla, Tipo, Sql)
-    SELECT 1, Nivel, Id, Esq, Tabla, 'CLAVES',
-           N'SELECT DISTINCT ' + KCols + N' INTO ' + KTabla + N' FROM ' + QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla)
-         + N' AS T WHERE ' + Miembro
-    FROM #Nodo WHERE KCols IS NOT NULL ORDER BY Nivel, Id;
+    IF @CicloK = 0
+        INSERT #Plan (Fase, Nivel, NodoId, Esq, Tabla, Tipo, Sql)
+        SELECT 1, NivelK, Id, Esq, Tabla, 'CLAVES',
+               N'SELECT DISTINCT ' + KCols + N' INTO ' + KTabla + N' FROM ' + QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla)
+             + N' AS T WHERE ' + Miembro
+        FROM #Nodo WHERE KCols IS NOT NULL ORDER BY NivelK, Id;
+    ELSE
+    BEGIN
+        -- raices: la lista sale directo de las semillas
+        INSERT #Plan (Fase, Nivel, NodoId, Esq, Tabla, Tipo, Sql)
+        SELECT 1, NivelK, Id, Esq, Tabla, 'CLAVES',
+               N'SELECT DISTINCT ' + KCols + N' INTO ' + KTabla + N' FROM ' + QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla)
+             + N' AS T WHERE ' + Miembro
+        FROM #Nodo WHERE KCols IS NOT NULL AND EsRaiz = 1 ORDER BY Id;
+        -- dependientes: se crean vacias y se completan repitiendo hasta que no haya filas nuevas
+        INSERT #Plan (Fase, Nivel, NodoId, Esq, Tabla, Tipo, Sql)
+        SELECT 1, NivelK, Id, Esq, Tabla, 'CLAVES',
+               N'SELECT ' + KCols + N' INTO ' + KTabla + N' FROM ' + QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla) + N' AS T WHERE 1 = 0'
+        FROM #Nodo WHERE KCols IS NOT NULL AND EsRaiz = 0 ORDER BY Id;
+        INSERT #Plan (Fase, Nivel, NodoId, Esq, Tabla, Tipo, Sql)
+        SELECT 1, NivelK, Id, Esq, Tabla, 'ITERAR',
+               N'INSERT ' + KTabla + N' (' + KCols + N') SELECT DISTINCT ' + KCols + N' FROM ' + QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla)
+             + N' AS T WHERE (' + Miembro + N') AND NOT EXISTS (SELECT 1 FROM ' + KTabla + N' AS X WHERE ' + KIgual + N')'
+        FROM #Nodo WHERE KCols IS NOT NULL AND EsRaiz = 0 ORDER BY NivelK, Id;
+    END
 
     -- Fase 2: filas de una tabla raiz que NO estan en la lista y dependen de algo que se borra
     INSERT #Plan (Fase, Nivel, NodoId, Esq, Tabla, Tipo, Detalle, Sql, Muestra)
@@ -307,6 +398,13 @@ BEGIN TRY
     JOIN #Nodo h ON h.ObjectId = a.ObjH AND h.EsRaiz = 1
     JOIN #Nodo p ON p.ObjectId = a.ObjP
     ORDER BY h.Nivel, h.Id;
+
+    -- Fase 3: FK de un ciclo -> desactivarlas durante la transaccion (se revalidan en la Fase 5)
+    INSERT #Plan (Fase, Nivel, Esq, Tabla, Tipo, Detalle, Sql)
+    SELECT 3, 0, OBJECT_SCHEMA_NAME(a.ObjH), OBJECT_NAME(a.ObjH), 'DESACTIVAR', a.Nombre + N' (' + a.ColsH + N' -> ' + OBJECT_NAME(a.ObjP) + N')',
+           N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(a.ObjH)) + N'.' + QUOTENAME(OBJECT_NAME(a.ObjH))
+         + N' NOCHECK CONSTRAINT ' + QUOTENAME(a.Nombre)
+    FROM #Arista a WHERE a.Rota = 1;
 
     -- Fase 3: tablas en #Excepcion -> poner NULL la referencia
     INSERT #Plan (Fase, Nivel, Esq, Tabla, Tipo, Detalle, Sql)
@@ -323,7 +421,23 @@ BEGIN TRY
            N'DELETE T FROM ' + QUOTENAME(Esq) + N'.' + QUOTENAME(Tabla) + N' AS T WHERE ' + Miembro
     FROM #Nodo ORDER BY Nivel DESC, Id;
 
+    -- Fase 5: volver a activar las FK desactivadas (con revalidacion, salvo que ya estuvieran sin validar)
+    INSERT #Plan (Fase, Nivel, Esq, Tabla, Tipo, Detalle, Sql)
+    SELECT 5, 0, OBJECT_SCHEMA_NAME(a.ObjH), OBJECT_NAME(a.ObjH), 'REACTIVAR', a.Nombre,
+           N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(a.ObjH)) + N'.' + QUOTENAME(OBJECT_NAME(a.ObjH))
+         + CASE WHEN a.NoConfiable = 1 THEN N' CHECK CONSTRAINT ' ELSE N' WITH CHECK CHECK CONSTRAINT ' END + QUOTENAME(a.Nombre)
+    FROM #Arista a WHERE a.Rota = 1;
+
     SELECT Seq, Fase, Tipo, Nivel, Tabla = Esq + N'.' + Tabla, Detalle, Sql FROM #Plan ORDER BY Seq;   -- plan a revisar
+
+    IF EXISTS (SELECT 1 FROM #Arista WHERE Rota = 1)
+    BEGIN
+        PRINT N'*** Hay referencias circulares entre tablas: para poder borrar se desactivan temporalmente estas FK y se revalidan al final (resultado "FK desactivadas temporalmente").';
+        SELECT [FK desactivadas temporalmente] = a.Nombre, Tabla = OBJECT_SCHEMA_NAME(a.ObjH) + N'.' + OBJECT_NAME(a.ObjH), Columnas = a.ColsH, ApuntaA = OBJECT_NAME(a.ObjP)
+        FROM #Arista a WHERE a.Rota = 1;
+    END
+    IF @CicloK = 1
+        PRINT N'*** Hay tablas dependientes que se definen entre si: las claves a borrar se calculan por iteracion.';
 
     ----- 6. Dependencias que el script no ve (sin FK declarada) -----
     IF @BuscarSinFK = 1
@@ -370,12 +484,26 @@ BEGIN TRY
     ----- 7. Ejecucion dentro de una transaccion -----
     BEGIN TRAN;
 
+    DECLARE @IniGrupo INT = NULL, @CambiosGrupo BIGINT = 0, @Hay INT;
     WHILE 1 = 1
     BEGIN
         SELECT TOP (1) @Seq = Seq, @Fase = Fase, @Niv = Nivel, @NodoId = NodoId, @Tabla = Esq + N'.' + Tabla,
                        @Tipo = Tipo, @sql = Sql, @Muestra = Muestra
         FROM #Plan WHERE Seq > @Seq ORDER BY Seq;
-        IF @@ROWCOUNT = 0 BREAK;
+        SET @Hay = @@ROWCOUNT;
+
+        -- fin de un grupo iterativo (ITERAR): si agrego claves nuevas se repite el grupo completo
+        IF @IniGrupo IS NOT NULL AND (@Hay = 0 OR @Tipo <> 'ITERAR')
+        BEGIN
+            IF @CambiosGrupo > 0
+            BEGIN
+                SELECT @CambiosGrupo = 0, @Seq = @IniGrupo - 1;
+                CONTINUE;
+            END
+            SET @IniGrupo = NULL;
+        END
+        IF @Hay = 0 BREAK;
+        IF @Tipo = 'ITERAR' AND @IniGrupo IS NULL SET @IniGrupo = @Seq;
 
         IF @Fase >= 3 AND @Conflictos > 0
         BEGIN
@@ -395,6 +523,8 @@ BEGIN TRY
         END
 
         INSERT @Log (Seq, Fase, NodoId, Tabla, Tipo, Filas) VALUES (@Seq, @Fase, @NodoId, @Tabla, @Tipo, @n);
+
+        IF @Tipo = 'ITERAR' SET @CambiosGrupo += @n;
 
         IF @Tipo = 'CONFLICTO' AND @n > 0
         BEGIN
@@ -426,6 +556,7 @@ BEGIN TRY
     ORDER BY n.Nivel, n.Tabla;
 
     SELECT [Referencias puestas en NULL] = Tabla, Filas FROM @Log WHERE Tipo = 'ANULAR' AND Filas > 0;
+    SELECT [FK reactivadas (revalidadas)] = Tabla FROM @Log WHERE Tipo = 'REACTIVAR';
     SELECT [Total filas borradas] = ISNULL(SUM(Filas), 0) FROM @Log WHERE Tipo = 'BORRAR';
 END TRY
 BEGIN CATCH
