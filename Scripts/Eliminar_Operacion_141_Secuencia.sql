@@ -1,8 +1,8 @@
 /*==============================================================================================
   Eliminar_Operacion_141_Secuencia.sql
 
-  Borra la operacion @IdOperacion (rutas, jornadas, viajes, paradas, ordenes y lo que cuelga de
-  ellos) con una lista FIJA de DELETE, de arriba hacia abajo.
+  Borra la operacion @IdOperacion (rutas, jornadas, viajes, paradas, ordenes, pedidos y lo que
+  cuelga de ellos) con una lista FIJA de DELETE, de arriba hacia abajo.
 
   COMO USARLO
     1) Dejar @Ejecutar = 0 y correr: ejecuta toda la lista dentro de una transaccion y al final
@@ -11,10 +11,14 @@
     2) Con @Ejecutar = 1 se repite y se hace COMMIT.
 
   NOTA SOBRE EL ORDEN
-    Es el orden de la lista original, con UN cambio: el DELETE de Jornada va AL FINAL (paso 31).
-    Los pasos de viaje/parada/ruta ubican sus filas con "... FROM Jornada WHERE IdOperacion = ...";
-    si Jornada se borrara antes, esas subconsultas no devolverian nada y esos pasos no borrarian
-    nada (o Jornada fallaria por la FK de Viaje).
+    Es el orden de la lista original, con DOS cambios:
+    1) El bloque de pedidos (PedidoItem_Dyn ... Pedido, pasos 16 a 21) va DESPUES de Orden, no al
+       principio: Orden.IdPedido, OrdenPedido y OrdenItemPedidoItem apuntan a Pedido/PedidoItem,
+       y borrar los pedidos primero choca con esas foreign keys.
+    2) El DELETE de Jornada va AL FINAL (paso 37). Los pasos de viaje/parada/ruta ubican sus filas
+       con "... FROM Jornada WHERE IdOperacion = ..."; si Jornada se borrara antes, esas
+       subconsultas no devolverian nada y esos pasos no borrarian nada (o Jornada fallaria por
+       la FK de Viaje).
 
   LIMITES
     - Solo borra lo que esta en la lista. Una tabla que dependa de estas y no figure aqui hace
@@ -110,86 +114,117 @@ BEGIN TRY
     DELETE FROM Orden WHERE IdOperacion = @IdOperacion;
     INSERT @Log (Paso, Tabla, Filas) VALUES (15, N'Orden (IdOperacion)', @@ROWCOUNT);
 
-    -- 16) ViajeAgrupadorViaje (IdViaje)
-    SET @Paso = N'16 - ViajeAgrupadorViaje (IdViaje)';
+    -- 16) PedidoItem_Dyn (IdPedidoItem)
+    --    (bloque de pedidos: en la lista original iba al principio; va despues de Orden porque Orden, OrdenPedido y OrdenItemPedidoItem apuntan a Pedido/PedidoItem)
+    SET @Paso = N'16 - PedidoItem_Dyn (IdPedidoItem)';
+    DELETE FROM PedidoItem_Dyn WHERE IdPedidoItem IN (SELECT IdPedidoItem FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion));
+    INSERT @Log (Paso, Tabla, Filas) VALUES (16, N'PedidoItem_Dyn (IdPedidoItem)', @@ROWCOUNT);
+
+    -- 17) PedidoItem (IdPedido)
+    SET @Paso = N'17 - PedidoItem (IdPedido)';
+    DELETE FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (17, N'PedidoItem (IdPedido)', @@ROWCOUNT);
+
+    -- 18) Pedido_Dyn (IdPedido)
+    SET @Paso = N'18 - Pedido_Dyn (IdPedido)';
+    DELETE FROM Pedido_Dyn WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (18, N'Pedido_Dyn (IdPedido)', @@ROWCOUNT);
+
+    -- 19) BitacoraPedido (IdPedido)
+    SET @Paso = N'19 - BitacoraPedido (IdPedido)';
+    DELETE FROM BitacoraPedido WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (19, N'BitacoraPedido (IdPedido)', @@ROWCOUNT);
+
+    -- 20) PedidoTraceEstado (IdPedido)
+    SET @Paso = N'20 - PedidoTraceEstado (IdPedido)';
+    DELETE FROM PedidoTraceEstado WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (20, N'PedidoTraceEstado (IdPedido)', @@ROWCOUNT);
+
+    -- 21) Pedido (IdOperacion)
+    SET @Paso = N'21 - Pedido (IdOperacion)';
+    DELETE FROM Pedido WHERE IdOperacion = @IdOperacion;
+    INSERT @Log (Paso, Tabla, Filas) VALUES (21, N'Pedido (IdOperacion)', @@ROWCOUNT);
+
+    -- 22) ViajeAgrupadorViaje (IdViaje)
+    SET @Paso = N'22 - ViajeAgrupadorViaje (IdViaje)';
     DELETE FROM ViajeAgrupadorViaje WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (16, N'ViajeAgrupadorViaje (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (22, N'ViajeAgrupadorViaje (IdViaje)', @@ROWCOUNT);
 
-    -- 17) Alarma (IdParada)
-    SET @Paso = N'17 - Alarma (IdParada)';
+    -- 23) Alarma (IdParada)
+    SET @Paso = N'23 - Alarma (IdParada)';
     DELETE FROM Alarma WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (17, N'Alarma (IdParada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (23, N'Alarma (IdParada)', @@ROWCOUNT);
 
-    -- 18) ParadaTraceEstado (IdParada)
-    SET @Paso = N'18 - ParadaTraceEstado (IdParada)';
+    -- 24) ParadaTraceEstado (IdParada)
+    SET @Paso = N'24 - ParadaTraceEstado (IdParada)';
     DELETE FROM ParadaTraceEstado WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (18, N'ParadaTraceEstado (IdParada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (24, N'ParadaTraceEstado (IdParada)', @@ROWCOUNT);
 
-    -- 19) BitacoraParada (IdParada)
-    SET @Paso = N'19 - BitacoraParada (IdParada)';
+    -- 25) BitacoraParada (IdParada)
+    SET @Paso = N'25 - BitacoraParada (IdParada)';
     DELETE FROM BitacoraParada WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (19, N'BitacoraParada (IdParada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (25, N'BitacoraParada (IdParada)', @@ROWCOUNT);
 
-    -- 20) ParadaItemCantidad (IdParadaItem)
-    SET @Paso = N'20 - ParadaItemCantidad (IdParadaItem)';
+    -- 26) ParadaItemCantidad (IdParadaItem)
+    SET @Paso = N'26 - ParadaItemCantidad (IdParadaItem)';
     DELETE FROM ParadaItemCantidad WHERE IdParadaItem IN (SELECT IdParadaItem FROM ParadaItem WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (20, N'ParadaItemCantidad (IdParadaItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (26, N'ParadaItemCantidad (IdParadaItem)', @@ROWCOUNT);
 
-    -- 21) ParadaItem_Dyn (IdParadaItem)
-    SET @Paso = N'21 - ParadaItem_Dyn (IdParadaItem)';
+    -- 27) ParadaItem_Dyn (IdParadaItem)
+    SET @Paso = N'27 - ParadaItem_Dyn (IdParadaItem)';
     DELETE FROM ParadaItem_Dyn WHERE IdParadaItem IN (SELECT IdParadaItem FROM ParadaItem WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (21, N'ParadaItem_Dyn (IdParadaItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (27, N'ParadaItem_Dyn (IdParadaItem)', @@ROWCOUNT);
 
-    -- 22) ParadaItem (IdParada)
-    SET @Paso = N'22 - ParadaItem (IdParada)';
+    -- 28) ParadaItem (IdParada)
+    SET @Paso = N'28 - ParadaItem (IdParada)';
     DELETE FROM ParadaItem WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (22, N'ParadaItem (IdParada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (28, N'ParadaItem (IdParada)', @@ROWCOUNT);
 
-    -- 23) EstadiaParada (IdParada)
-    SET @Paso = N'23 - EstadiaParada (IdParada)';
+    -- 29) EstadiaParada (IdParada)
+    SET @Paso = N'29 - EstadiaParada (IdParada)';
     DELETE FROM EstadiaParada WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (23, N'EstadiaParada (IdParada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (29, N'EstadiaParada (IdParada)', @@ROWCOUNT);
 
-    -- 24) Parada (IdViaje)
-    SET @Paso = N'24 - Parada (IdViaje)';
+    -- 30) Parada (IdViaje)
+    SET @Paso = N'30 - Parada (IdViaje)';
     DELETE FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (24, N'Parada (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (30, N'Parada (IdViaje)', @@ROWCOUNT);
 
-    -- 25) ViajeRecurso (IdViaje)
-    SET @Paso = N'25 - ViajeRecurso (IdViaje)';
+    -- 31) ViajeRecurso (IdViaje)
+    SET @Paso = N'31 - ViajeRecurso (IdViaje)';
     DELETE FROM ViajeRecurso WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (25, N'ViajeRecurso (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (31, N'ViajeRecurso (IdViaje)', @@ROWCOUNT);
 
-    -- 26) BitacoraViaje (IdViaje)
-    SET @Paso = N'26 - BitacoraViaje (IdViaje)';
+    -- 32) BitacoraViaje (IdViaje)
+    SET @Paso = N'32 - BitacoraViaje (IdViaje)';
     DELETE FROM BitacoraViaje WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (26, N'BitacoraViaje (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (32, N'BitacoraViaje (IdViaje)', @@ROWCOUNT);
 
-    -- 27) GuiaViaje (IdViaje)
-    SET @Paso = N'27 - GuiaViaje (IdViaje)';
+    -- 33) GuiaViaje (IdViaje)
+    SET @Paso = N'33 - GuiaViaje (IdViaje)';
     DELETE FROM GuiaViaje WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (27, N'GuiaViaje (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (33, N'GuiaViaje (IdViaje)', @@ROWCOUNT);
 
-    -- 28) EstadoViajeTraceEstado (IdViaje)
-    SET @Paso = N'28 - EstadoViajeTraceEstado (IdViaje)';
+    -- 34) EstadoViajeTraceEstado (IdViaje)
+    SET @Paso = N'34 - EstadoViajeTraceEstado (IdViaje)';
     DELETE FROM EstadoViajeTraceEstado WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (28, N'EstadoViajeTraceEstado (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (34, N'EstadoViajeTraceEstado (IdViaje)', @@ROWCOUNT);
 
-    -- 29) ConceptoValorizadoGuia (IdViaje)
-    SET @Paso = N'29 - ConceptoValorizadoGuia (IdViaje)';
+    -- 35) ConceptoValorizadoGuia (IdViaje)
+    SET @Paso = N'35 - ConceptoValorizadoGuia (IdViaje)';
     DELETE FROM ConceptoValorizadoGuia WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (29, N'ConceptoValorizadoGuia (IdViaje)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (35, N'ConceptoValorizadoGuia (IdViaje)', @@ROWCOUNT);
 
-    -- 30) Viaje (IdJornada)
-    SET @Paso = N'30 - Viaje (IdJornada)';
+    -- 36) Viaje (IdJornada)
+    SET @Paso = N'36 - Viaje (IdJornada)';
     DELETE FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (30, N'Viaje (IdJornada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (36, N'Viaje (IdJornada)', @@ROWCOUNT);
 
-    -- 31) Jornada (IdOperacion)
-    --    (en la lista original era el paso 16; va al final porque los pasos de viaje dependen de Jornada)
-    SET @Paso = N'31 - Jornada (IdOperacion)';
+    -- 37) Jornada (IdOperacion)
+    --    (en la lista original iba antes de los pasos de viaje; va al final porque esos pasos ubican sus filas a traves de Jornada)
+    SET @Paso = N'37 - Jornada (IdOperacion)';
     DELETE FROM Jornada WHERE IdOperacion = @IdOperacion;
-    INSERT @Log (Paso, Tabla, Filas) VALUES (31, N'Jornada (IdOperacion)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (37, N'Jornada (IdOperacion)', @@ROWCOUNT);
 
     IF @Ejecutar = 1
     BEGIN
