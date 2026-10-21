@@ -6,6 +6,9 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
 ## Estructura
 - `SP/` — un archivo `.sql` por procedimiento, con el nombre exacto del SP
   (ej. `SP/Z_SP_YPF_SetDatosViaje.sql`). Cada archivo contiene el `ALTER PROCEDURE` completo.
+- `Scripts/` — scripts de mantenimiento que no son SP. `Eliminar_Operacion_141.sql` borra jornadas, viajes,
+  paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
+  FK). Por defecto corre en simulación (ROLLBACK); ver el encabezado del script antes de usarlo.
 
 ## Regla en curso: excluir la operación 141
 
