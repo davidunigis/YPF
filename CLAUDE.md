@@ -8,8 +8,10 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   (ej. `SP/Z_SP_YPF_SetDatosViaje.sql`). Cada archivo contiene el `ALTER PROCEDURE` completo.
   `SP/Z_Solidas-AtributosPedido.sql` es un SP **nuevo** (no entra en la regla de la operación 141; usa
   `CREATE OR ALTER`): al crearse un pedido, si su OT (`OrdenPedido`) está en `IdEstadoOrden = 60`, inserta en
-  `CambioEstadoSolicitud` el cambio de la OT a 62 y deja `InicioHorario1 = 0` / `FinHorario1 = 2359` en el
-  pedido. El nombre lleva guion, así que se invoca entre corchetes.
+  `CambioEstadoSolicitud` el cambio de la OT a 62, deja `InicioHorario1 = 0` / `FinHorario1 = 2359` en el
+  pedido y, si `Pedido.FechaRecoleccion` viene vacía (NULL), le asigna la fecha y hora de ejecución en horario
+  de Argentina (`GETUTCDATE()` menos 3 horas, como hacen los demás SP con desfase fijo). El nombre lleva guion,
+  así que se invoca entre corchetes.
   `SP/Z_Solidas-AtributosOrden.sql` (nuevo, recibe `@IdOrden`): copia `Pedido.Int1` (vehículo 207/208/209) a
   `Orden.IdTipoVehiculo` y `Orden.Int1` (si hay valor) y deja `InicioHorario1 = 0` / `FinHorario1 = 2359` en la
   orden. Solo actúa si la orden tiene `IdPedido` (así se sabe que viene de un pedido); si no, no hace nada. Ojo: `Z_SP_YPF_SetDatosOrden` (proceso 300) ya copia los horarios del pedido a la orden.

@@ -17,6 +17,9 @@ BEGIN
               pide su cambio a 62 (OT En Proceso) con una solicitud en CambioEstadoSolicitud.
     Modificado: 22/10/2026 - ademas de lo anterior, setea en el pedido InicioHorario1 = 0 y
               FinHorario1 = 2359 (Pedido.InicioHorario1 / Pedido.FinHorario1).
+    Modificado: 22/10/2026 - si Pedido.FechaRecoleccion viene vacia (NULL), le asigna la fecha y hora en
+              que se ejecuta el SP en horario de Argentina (UTC-3; la base guarda en UTC). Si ya tiene
+              valor, no se toca.
     Llamada desde la plataforma:  EXEC [dbo].[Z_Solidas-AtributosPedido] [Pedido.IdPedido]
     Notas:
       - El cambio de estado es de la OT (Entidad = 'Orden'), no del pedido.
@@ -28,6 +31,7 @@ BEGIN
 
     BEGIN TRY
         DECLARE @Solicitudes INT = 0;
+        DECLARE @AhoraAR DATETIME = DATEADD(HOUR, -3, GETUTCDATE());   -- hora de Argentina (UTC-3)
 
         INSERT INTO CambioEstadoSolicitud (
             Entidad, IdEntidad, IdEstadoDestino, ValidarTransicion, MismoEstado,
@@ -61,13 +65,16 @@ BEGIN
 
         SET @Solicitudes = @@ROWCOUNT;
 
-        /*Horario del pedido: todo el dia (solo escribe si cambia)*/
+        /*Horario del pedido: todo el dia; y FechaRecoleccion = ahora (hora de Argentina) si viene vacia.
+          Solo escribe si algo cambia.*/
         UPDATE Pedido
-        SET InicioHorario1 = 0,
-            FinHorario1    = 2359
+        SET InicioHorario1   = 0,
+            FinHorario1      = 2359,
+            FechaRecoleccion = ISNULL(FechaRecoleccion, @AhoraAR)
         WHERE IdPedido = @IdPedido
           AND (ISNULL(InicioHorario1, -1) <> 0
-               OR ISNULL(FinHorario1, -1) <> 2359);
+               OR ISNULL(FinHorario1, -1) <> 2359
+               OR FechaRecoleccion IS NULL);
 
         INSERT Log (Categoria, Descripcion, FechaHora)
         VALUES ('Solidas-AtributosPedido',
