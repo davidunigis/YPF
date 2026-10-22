@@ -22,10 +22,12 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
   FK). **No borra el registro de la operación**; las jornadas se pueden conservar con `@BorrarJornadas = 0`.
   Por defecto corre en simulación (ROLLBACK); ver el encabezado del script antes de usarlo.
-  `Eliminar_Operacion_141_Secuencia.sql` hace lo mismo con una lista fija de 39 `DELETE`, reordenados según
-  las FK reales de la base (errores 547 observados): viajes/paradas → órdenes → pedidos → rutas y `OrdenParada`
-  → `Jornada` al final. También simula por defecto y se puede volver a correr (los `DELETE` ya aplicados afectan
-  0 filas), útil para terminar un borrado que quedó a medias.
+  `Eliminar_Operacion_141_Secuencia.sql` hace lo mismo con una lista fija de 40 `DELETE`, reordenados según
+  las FK reales de la base (errores 547 observados): viajes/paradas → órdenes → pedidos → rutas (con
+  `RutaTraceEstado`) y `OrdenParada` → `Jornada` al final. También simula por defecto y se puede volver a correr
+  (los `DELETE` ya aplicados afectan 0 filas), útil para terminar un borrado que quedó a medias. Al empezar hace
+  un diagnóstico de solo lectura: lista las tablas con FK hacia las de la lista que no figuran en ella y tienen
+  filas que bloquearían el borrado.
 
 ## Regla en curso: excluir la operación 141
 

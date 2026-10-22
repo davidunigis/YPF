@@ -22,10 +22,18 @@
       - FK_Orden_OrdenParada    : Orden.IdOrdenParada    -> OrdenParada  (OrdenParada despues de Orden)
       - FK_Parada_Orden         : Parada.IdOrden         -> Orden        (Orden despues de Parada)
       - FK_Orden_Jornada        : Orden.IdJornada        -> Jornada      (Jornada despues de Orden)
+      - FK_RutaTraceEstado_Ruta : RutaTraceEstado.IdRuta -> Ruta         (RutaTraceEstado antes de Ruta; se agrego a la lista)
     Jornada va ademas AL FINAL porque los pasos de viaje/parada/ruta ubican sus filas con
     "... FROM Jornada WHERE IdOperacion = ...": si Jornada se borrara antes, esas subconsultas no
     devolverian nada y esos pasos no borrarian nada.
     Orden resultante: viajes y paradas -> ordenes -> pedidos -> rutas/OrdenParada -> Jornada.
+
+  DIAGNOSTICO (solo lectura, al empezar)
+    Antes de borrar busca las tablas con foreign key hacia las de esta lista que NO figuran en ella y
+    que tienen filas apuntando a lo que se va a borrar (resultado "Tablas FUERA de la lista"). Cada una
+    haria fallar su paso con el error 547: agregar su DELETE a la lista (antes de la tabla a la que
+    apunta) y volver a correr. Cubre las FK de una sola columna; las de varias columnas se informan
+    como "no verificada".
 
   LIMITES
     - Solo borra lo que esta en la lista. Una tabla que dependa de estas y no figure aqui hace
@@ -44,6 +52,95 @@ DECLARE @Ejecutar    BIT = 0;   -- 0 = simulacion (ROLLBACK al final) | 1 = borr
 
 DECLARE @Log  TABLE (Paso INT, Tabla NVARCHAR(200), Filas BIGINT);
 DECLARE @Paso NVARCHAR(200);
+
+-- DIAGNOSTICO (solo lectura): tablas con FK hacia las de la lista que NO estan en ella y tienen filas por borrar
+BEGIN TRY
+    DECLARE @Cub TABLE (Tabla SYSNAME PRIMARY KEY, Pred NVARCHAR(MAX));
+    INSERT @Cub (Tabla, Pred) VALUES
+        (N'ViajeAgrupadorViaje', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'Alarma', N'IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)))'),
+        (N'ParadaTraceEstado', N'IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)))'),
+        (N'BitacoraParada', N'IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)))'),
+        (N'ParadaItemCantidad', N'IdParadaItem IN (SELECT IdParadaItem FROM ParadaItem WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))))'),
+        (N'ParadaItem_Dyn', N'IdParadaItem IN (SELECT IdParadaItem FROM ParadaItem WHERE IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))))'),
+        (N'ParadaItem', N'IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)))'),
+        (N'EstadiaParada', N'IdParada IN (SELECT IdParada FROM Parada WHERE IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)))'),
+        (N'Parada', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'ViajeRecurso', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'BitacoraViaje', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'GuiaViaje', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'EstadoViajeTraceEstado', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'ConceptoValorizadoGuia', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'Viaje', N'IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)'),
+        (N'OrdenTrayecto', N'(IdOrdenOrigen IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)) OR (IdOrdenDestino IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion))'),
+        (N'OrdenTraceEstado', N'IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)'),
+        (N'OrdenPedido', N'(IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)) OR (IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion))'),
+        (N'BitacoraOrden', N'IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)'),
+        (N'OrdenItemOT', N'IdOrdenItem IN (SELECT IdOrdenItem FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion))'),
+        (N'OrdenItemPedidoItem', N'(IdPedidoItem IN (SELECT IdPedidoItem FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion))) OR (IdOrdenItem IN (SELECT IdOrdenItem FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)))'),
+        (N'OrdenItem_Dyn', N'IdOrdenItem IN (SELECT IdOrdenItem FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion))'),
+        (N'OrdenItem', N'IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)'),
+        (N'Orden_Dyn', N'IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)'),
+        (N'Orden', N'IdOperacion = @IdOperacion'),
+        (N'PedidoItem_Dyn', N'IdPedidoItem IN (SELECT IdPedidoItem FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion))'),
+        (N'PedidoItem', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
+        (N'Pedido_Dyn', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
+        (N'BitacoraPedido', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
+        (N'PedidoTraceEstado', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
+        (N'Pedido', N'IdOperacion = @IdOperacion'),
+        (N'BitacoraRuta', N'IdRuta IN (SELECT IdRuta FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'RutaTraceEstado', N'IdRuta IN (SELECT IdRuta FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
+        (N'Ruta', N'IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)'),
+        (N'OrdenParada', N'IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)'),
+        (N'BitacoraJornada', N'IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)'),
+        (N'Jornada', N'IdOperacion = @IdOperacion')
+    ;
+
+    DECLARE @Falta TABLE (FK SYSNAME, TablaHija NVARCHAR(300), ApuntaA SYSNAME, Filas BIGINT NULL);
+    DECLARE @dfk SYSNAME, @dh NVARCHAR(300), @dp SYSNAME, @dsql NVARCHAR(MAX), @dn BIGINT;
+
+    DECLARE dcur CURSOR LOCAL FAST_FORWARD FOR
+        SELECT fk.name,
+               QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id)) + N'.' + QUOTENAME(OBJECT_NAME(fk.parent_object_id)),
+               OBJECT_NAME(fk.referenced_object_id),
+               CASE WHEN k.N = 1
+                    THEN N'SELECT @n = COUNT_BIG(*) FROM ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id)) + N'.' + QUOTENAME(OBJECT_NAME(fk.parent_object_id))
+                       + N' WHERE ' + QUOTENAME(COL_NAME(fk.parent_object_id, k.PCol)) + N' IN (SELECT ' + QUOTENAME(COL_NAME(fk.referenced_object_id, k.RCol))
+                       + N' FROM ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.referenced_object_id)) + N'.' + QUOTENAME(OBJECT_NAME(fk.referenced_object_id)) + N' WHERE ' + c.Pred + N')'
+               END
+        FROM sys.foreign_keys fk
+        JOIN @Cub c ON c.Tabla = OBJECT_NAME(fk.referenced_object_id)
+        CROSS APPLY (SELECT COUNT(*) AS N, MIN(parent_column_id) AS PCol, MIN(referenced_column_id) AS RCol
+                     FROM sys.foreign_key_columns WHERE constraint_object_id = fk.object_id) k
+        WHERE NOT EXISTS (SELECT 1 FROM @Cub h WHERE h.Tabla = OBJECT_NAME(fk.parent_object_id));
+
+    OPEN dcur;
+    FETCH NEXT FROM dcur INTO @dfk, @dh, @dp, @dsql;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        IF @dsql IS NULL
+            INSERT @Falta VALUES (@dfk, @dh, @dp, NULL);                    -- FK de varias columnas: no verificada
+        ELSE
+        BEGIN
+            SET @dn = 0;
+            EXEC sp_executesql @dsql, N'@n BIGINT OUTPUT, @IdOperacion INT', @n = @dn OUTPUT, @IdOperacion = @IdOperacion;
+            IF @dn > 0 INSERT @Falta VALUES (@dfk, @dh, @dp, @dn);
+        END
+        FETCH NEXT FROM dcur INTO @dfk, @dh, @dp, @dsql;
+    END
+    CLOSE dcur; DEALLOCATE dcur;
+
+    IF EXISTS (SELECT 1 FROM @Falta)
+    BEGIN
+        PRINT N'*** ATENCION: hay tablas FUERA de la lista con filas que dependen de lo que se va a borrar (resultado "Tablas FUERA de la lista").';
+        PRINT N'    Agregar su DELETE a la lista (antes de la tabla a la que apuntan) o el borrado fallara con el error 547.';
+        SELECT [Tablas FUERA de la lista] = TablaHija, FK, ApuntaA, Filas = ISNULL(CAST(Filas AS VARCHAR(20)), 'no verificada') FROM @Falta ORDER BY ApuntaA, TablaHija;
+    END
+    ELSE PRINT N'Diagnostico: no se encontraron tablas fuera de la lista con filas que bloqueen el borrado.';
+END TRY
+BEGIN CATCH
+    PRINT N'No se pudo ejecutar el diagnostico (el borrado sigue): ' + ERROR_MESSAGE();
+END CATCH
 
 BEGIN TRY
     BEGIN TRAN;
@@ -231,27 +328,32 @@ BEGIN TRY
     DELETE FROM BitacoraRuta WHERE IdRuta IN (SELECT IdRuta FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
     INSERT @Log (Paso, Tabla, Filas) VALUES (35, N'BitacoraRuta (IdRuta)', @@ROWCOUNT);
 
-    -- 36) Ruta (IdJornada)
-    SET @Paso = N'36 - Ruta (IdJornada)';
+    -- 36) RutaTraceEstado (IdRuta)
+    SET @Paso = N'36 - RutaTraceEstado (IdRuta)';
+    DELETE FROM RutaTraceEstado WHERE IdRuta IN (SELECT IdRuta FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion));
+    INSERT @Log (Paso, Tabla, Filas) VALUES (36, N'RutaTraceEstado (IdRuta)', @@ROWCOUNT);
+
+    -- 37) Ruta (IdJornada)
+    SET @Paso = N'37 - Ruta (IdJornada)';
     DELETE FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (36, N'Ruta (IdJornada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (37, N'Ruta (IdJornada)', @@ROWCOUNT);
 
-    -- 37) OrdenParada (IdJornada)
-    SET @Paso = N'37 - OrdenParada (IdJornada)';
+    -- 38) OrdenParada (IdJornada)
+    SET @Paso = N'38 - OrdenParada (IdJornada)';
     DELETE FROM OrdenParada WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (37, N'OrdenParada (IdJornada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (38, N'OrdenParada (IdJornada)', @@ROWCOUNT);
 
-    -- 38) BitacoraJornada (IdJornada)
-    SET @Paso = N'38 - BitacoraJornada (IdJornada)';
+    -- 39) BitacoraJornada (IdJornada)
+    SET @Paso = N'39 - BitacoraJornada (IdJornada)';
     DELETE FROM BitacoraJornada WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (38, N'BitacoraJornada (IdJornada)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (39, N'BitacoraJornada (IdJornada)', @@ROWCOUNT);
 
     ----- GRUPO 5 - Jornada, siempre al final (Orden.IdJornada -> Jornada; ademas los pasos de arriba ubican sus filas a traves de Jornada) -----
 
-    -- 39) Jornada (IdOperacion)
-    SET @Paso = N'39 - Jornada (IdOperacion)';
+    -- 40) Jornada (IdOperacion)
+    SET @Paso = N'40 - Jornada (IdOperacion)';
     DELETE FROM Jornada WHERE IdOperacion = @IdOperacion;
-    INSERT @Log (Paso, Tabla, Filas) VALUES (39, N'Jornada (IdOperacion)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (40, N'Jornada (IdOperacion)', @@ROWCOUNT);
 
     IF @Ejecutar = 1
     BEGIN
