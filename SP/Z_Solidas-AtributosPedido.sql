@@ -20,6 +20,9 @@ BEGIN
     Modificado: 22/10/2026 - si Pedido.FechaRecoleccion viene vacia (NULL), le asigna la fecha y hora en
               que se ejecuta el SP en horario de Argentina (UTC-3; la base guarda en UTC). Si ya tiene
               valor, no se toca.
+    Modificado: 22/10/2026 - la categoria de Log pasa a 'SolidasAtribPedido': Log.Categoria admite solo 20
+              caracteres y 'Solidas-AtributosPedido' (23) lo superaba (error de datos truncados). El INSERT en Log va
+              protegido: si falla, no rompe el SP ni se informa como error.
     Llamada desde la plataforma:  EXEC [dbo].[Z_Solidas-AtributosPedido] [Pedido.IdPedido]
     Notas:
       - El cambio de estado es de la OT (Entidad = 'Orden'), no del pedido.
@@ -76,15 +79,23 @@ BEGIN
                OR ISNULL(FinHorario1, -1) <> 2359
                OR FechaRecoleccion IS NULL);
 
-        INSERT Log (Categoria, Descripcion, FechaHora)
-        VALUES ('Solidas-AtributosPedido',
-                'OK IdPedido=' + CONVERT(VARCHAR(20), @IdPedido) + ' Solicitudes=' + CONVERT(VARCHAR(10), @Solicitudes),
-                GETUTCDATE());
+        BEGIN TRY   -- el Log nunca debe hacer fallar el SP
+            INSERT Log (Categoria, Descripcion, FechaHora)
+            VALUES ('SolidasAtribPedido',
+                    'OK IdPedido=' + CONVERT(VARCHAR(20), @IdPedido) + ' Solicitudes=' + CONVERT(VARCHAR(10), @Solicitudes),
+                    GETUTCDATE());
+        END TRY
+        BEGIN CATCH
+        END CATCH
     END TRY
     BEGIN CATCH
-        INSERT Log (Categoria, Descripcion, FechaHora)
-        VALUES ('Solidas-AtributosPedido',
-                'IdPedido=' + CONVERT(VARCHAR(20), @IdPedido) + ' Error :' + ERROR_MESSAGE(),
-                GETUTCDATE());
+        BEGIN TRY   -- el Log nunca debe hacer fallar el SP
+            INSERT Log (Categoria, Descripcion, FechaHora)
+            VALUES ('SolidasAtribPedido',
+                    'IdPedido=' + CONVERT(VARCHAR(20), @IdPedido) + ' Error :' + ERROR_MESSAGE(),
+                    GETUTCDATE());
+        END TRY
+        BEGIN CATCH
+        END CATCH
     END CATCH
 END

@@ -29,6 +29,9 @@ BEGIN
          - Los pedidos de las paradas deben dar el mismo tipo de vehiculo: si dan tipos distintos, o ninguna
            parada tiene pedido con canal 1, 2 o 3, no se asigna nada (queda anotado en Log).
          - En este caso NO se asignan conductor, vehiculo ni transporte por defecto.
+    Modificado: 22/10/2026 - la categoria de Log pasa a 'SolidasAtribViaje': Log.Categoria admite solo 20
+              caracteres y 'Solidas-AtributosViaje' (22) lo superaba (error de datos truncados). El INSERT en Log va
+              protegido: si falla, no rompe el SP ni se informa como error.
     Llamada desde la plataforma:  EXEC [dbo].[Z_Solidas-AtributosViaje] [Viaje.IdViaje]
     Notas:
       - Solo escribe si algun valor cambia.
@@ -116,15 +119,23 @@ BEGIN
                 SET @Detalle = 'SinRuta NO se asigna: ninguna parada tiene pedido con canal 1, 2 o 3';
         END
 
-        INSERT Log (Categoria, Descripcion, FechaHora)
-        VALUES ('Solidas-AtributosViaje',
-                'OK IdViaje=' + CONVERT(VARCHAR(20), @IdViaje) + ' ' + @Detalle,
-                GETUTCDATE());
+        BEGIN TRY   -- el Log nunca debe hacer fallar el SP
+            INSERT Log (Categoria, Descripcion, FechaHora)
+            VALUES ('SolidasAtribViaje',
+                    'OK IdViaje=' + CONVERT(VARCHAR(20), @IdViaje) + ' ' + @Detalle,
+                    GETUTCDATE());
+        END TRY
+        BEGIN CATCH
+        END CATCH
     END TRY
     BEGIN CATCH
-        INSERT Log (Categoria, Descripcion, FechaHora)
-        VALUES ('Solidas-AtributosViaje',
-                'IdViaje=' + CONVERT(VARCHAR(20), @IdViaje) + ' Error :' + ERROR_MESSAGE(),
-                GETUTCDATE());
+        BEGIN TRY   -- el Log nunca debe hacer fallar el SP
+            INSERT Log (Categoria, Descripcion, FechaHora)
+            VALUES ('SolidasAtribViaje',
+                    'IdViaje=' + CONVERT(VARCHAR(20), @IdViaje) + ' Error :' + ERROR_MESSAGE(),
+                    GETUTCDATE());
+        END TRY
+        BEGIN CATCH
+        END CATCH
     END CATCH
 END

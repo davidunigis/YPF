@@ -19,6 +19,9 @@ BEGIN
         Orden.Int1 (el tipo de vehiculo 207 / 208 / 209 que dejo Z_SP_YPF_ValidaVehiculoPedido).
         Si Pedido.Int1 es NULL, esos dos campos no se tocan.
       - Setea Orden.InicioHorario1 = 0 y Orden.FinHorario1 = 2359.
+    Modificado: 22/10/2026 - la categoria de Log pasa a 'SolidasAtribOrden': Log.Categoria admite solo 20
+              caracteres y 'Solidas-AtributosOrden' (22) lo superaba (error de datos truncados). El INSERT en Log va
+              protegido: si falla, no rompe el SP ni se informa como error.
     Llamada desde la plataforma:  EXEC [dbo].[Z_Solidas-AtributosOrden] [Orden.IdOrden]
     Notas:
       - Solo escribe si algun valor cambia.
@@ -55,15 +58,23 @@ BEGIN
 
         SET @Filas = @@ROWCOUNT;
 
-        INSERT Log (Categoria, Descripcion, FechaHora)
-        VALUES ('Solidas-AtributosOrden',
-                'OK IdOrden=' + CONVERT(VARCHAR(20), @IdOrden) + ' Actualizada=' + CONVERT(VARCHAR(10), @Filas),
-                GETUTCDATE());
+        BEGIN TRY   -- el Log nunca debe hacer fallar el SP
+            INSERT Log (Categoria, Descripcion, FechaHora)
+            VALUES ('SolidasAtribOrden',
+                    'OK IdOrden=' + CONVERT(VARCHAR(20), @IdOrden) + ' Actualizada=' + CONVERT(VARCHAR(10), @Filas),
+                    GETUTCDATE());
+        END TRY
+        BEGIN CATCH
+        END CATCH
     END TRY
     BEGIN CATCH
-        INSERT Log (Categoria, Descripcion, FechaHora)
-        VALUES ('Solidas-AtributosOrden',
-                'IdOrden=' + CONVERT(VARCHAR(20), @IdOrden) + ' Error :' + ERROR_MESSAGE(),
-                GETUTCDATE());
+        BEGIN TRY   -- el Log nunca debe hacer fallar el SP
+            INSERT Log (Categoria, Descripcion, FechaHora)
+            VALUES ('SolidasAtribOrden',
+                    'IdOrden=' + CONVERT(VARCHAR(20), @IdOrden) + ' Error :' + ERROR_MESSAGE(),
+                    GETUTCDATE());
+        END TRY
+        BEGIN CATCH
+        END CATCH
     END CATCH
 END

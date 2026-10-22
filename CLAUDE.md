@@ -160,4 +160,7 @@ cuando se agreguen más SP.
 - Antes de modificar un SP, subir primero su versión actual tal cual (commit "original"),
   y luego el cambio en otro commit, para que el diff muestre solo lo agregado.
 - No alterar la lógica existente del SP más allá de la regla solicitada.
+- `Log.Categoria` admite **solo 20 caracteres** (error 2628 con `Solidas-AtributosOrden`, que tiene 22): las
+  categorías que escriben los SP deben medir 20 o menos. En los SP nuevos el `INSERT` en `Log` va dentro de su
+  propio `TRY/CATCH` para que un problema de `Log` no haga fallar al SP.
 - Comunicación en español.
