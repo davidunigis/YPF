@@ -9,6 +9,9 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   `SP/Z_Solidas-AtributosPedido.sql` es un SP **nuevo** (no entra en la regla de la operación 141; usa
   `CREATE OR ALTER`): al crearse un pedido, si su OT (`OrdenPedido`) está en `IdEstadoOrden = 60`, inserta en
   `CambioEstadoSolicitud` el cambio de la OT a 62. El nombre lleva guion, así que se invoca entre corchetes.
+  `SP/Z_SP_YPF_ValidaVehiculoPedido.sql` también es **nuevo** (validación de pedido, patrón `Resultado`/`Mensaje`
+  de otro cliente): si `Pedido.IdTipoCanal` es NULL pide ingresar el vehículo; si no, devuelve `OK` y asigna
+  `IdTipoVehiculo` e `Int1` (canal 1→207, 2→208, 3→209) sin escribir en `Log`.
 - `Scripts/` — scripts de mantenimiento que no son SP. `Eliminar_Operacion_141.sql` borra jornadas, viajes,
   paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
   FK). **No borra el registro de la operación**; las jornadas se pueden conservar con `@BorrarJornadas = 0`.
