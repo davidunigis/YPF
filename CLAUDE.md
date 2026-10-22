@@ -8,7 +8,11 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   (ej. `SP/Z_SP_YPF_SetDatosViaje.sql`). Cada archivo contiene el `ALTER PROCEDURE` completo.
   `SP/Z_Solidas-AtributosPedido.sql` es un SP **nuevo** (no entra en la regla de la operación 141; usa
   `CREATE OR ALTER`): al crearse un pedido, si su OT (`OrdenPedido`) está en `IdEstadoOrden = 60`, inserta en
-  `CambioEstadoSolicitud` el cambio de la OT a 62. El nombre lleva guion, así que se invoca entre corchetes.
+  `CambioEstadoSolicitud` el cambio de la OT a 62 y deja `InicioHorario1 = 0` / `FinHorario1 = 2359` en el
+  pedido. El nombre lleva guion, así que se invoca entre corchetes.
+  `SP/Z_Solidas-AtributosOrden.sql` (nuevo, recibe `@IdOrden`): copia `Pedido.Int1` (vehículo 207/208/209) a
+  `Orden.IdTipoVehiculo` y `Orden.Int1` (si hay valor) y siempre deja `InicioHorario1 = 0` / `FinHorario1 = 2359`
+  en la orden. Ojo: `Z_SP_YPF_SetDatosOrden` (proceso 300) ya copia los horarios del pedido a la orden.
   `SP/Z_SP_YPF_ValidaVehiculoPedido.sql` también es **nuevo** (validación de pedido, patrón `Resultado`/`Mensaje`
   de otro cliente): si `Pedido.IdTipoCanal` es NULL pide ingresar el vehículo; si no, devuelve `OK` y asigna
   `IdTipoVehiculo` e `Int1` (canal 1→207, 2→208, 3→209) sin escribir en `Log`.
