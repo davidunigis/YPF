@@ -15,6 +15,12 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   `SP/Z_Solidas-AtributosOrden.sql` (nuevo, recibe `@IdOrden`): copia `Pedido.Int1` (vehículo 207/208/209) a
   `Orden.IdTipoVehiculo` y `Orden.Int1` (si hay valor) y deja `InicioHorario1 = 0` / `FinHorario1 = 2359` en la
   orden. Solo actúa si la orden tiene `IdPedido` (así se sabe que viene de un pedido); si no, no hace nada. Ojo: `Z_SP_YPF_SetDatosOrden` (proceso 300) ya copia los horarios del pedido a la orden.
+  `SP/Z_Solidas-AtributosViaje.sql` (nuevo, recibe `@IdViaje`): defaults de Solidas conductor 12173, transporte 163,
+  vehículo 19052. Con ruta (`Viaje.IdRutaFK` no NULL ni 0): deja en `Seguimiento` (por `Viaje.IdSeguimiento`)
+  `IdTransporte = 163` / `IdVehiculo = 19052`, en el viaje `IdVehiculo` / `IdConductor` por defecto y
+  `IdTipoVehiculo` / `Float1` = `Ruta.IdTipoVehiculo`. Sin ruta: toma el tipo de vehículo de los pedidos de sus
+  paradas (`Pedido.IdTipoCanal` 1→207, 2→208, 3→209; si los pedidos no coinciden no asigna) y lo deja en
+  `IdTipoVehiculo` / `Float1`, sin defaults de conductor/vehículo/transporte.
   `SP/Z_SP_YPF_ValidaVehiculoPedido.sql` también es **nuevo** (validación de pedido, patrón `Resultado`/`Mensaje`
   de otro cliente): si `Pedido.IdTipoCanal` es NULL pide ingresar el vehículo; si no, devuelve `OK` y asigna
   `IdTipoVehiculo` e `Int1` (canal 1→207, 2→208, 3→209) sin escribir en `Log`.
