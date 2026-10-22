@@ -12,17 +12,29 @@ AS
 BEGIN
     /*
     Creado: 22/10/2026
-    Objetivo: se ejecuta para una orden (recibe el IdOrden) y le asigna sus atributos a partir del pedido:
+    Modificado: 22/10/2026 - si la orden no tiene IdPedido (no viene de un pedido) no hace nada.
+    Objetivo: se ejecuta para una orden (recibe el IdOrden) y le asigna sus atributos a partir del pedido.
+              Una orden viene de un pedido cuando tiene Orden.IdPedido; si no lo tiene, el SP no hace nada.
       - Toma Pedido.Int1 del pedido de la orden (Orden.IdPedido) y lo guarda en Orden.IdTipoVehiculo y
         Orden.Int1 (el tipo de vehiculo 207 / 208 / 209 que dejo Z_SP_YPF_ValidaVehiculoPedido).
-        Si la orden no tiene pedido o Pedido.Int1 es NULL, esos dos campos no se tocan.
-      - Setea Orden.InicioHorario1 = 0 y Orden.FinHorario1 = 2359 (siempre).
+        Si Pedido.Int1 es NULL, esos dos campos no se tocan.
+      - Setea Orden.InicioHorario1 = 0 y Orden.FinHorario1 = 2359.
     Llamada desde la plataforma:  EXEC [dbo].[Z_Solidas-AtributosOrden] [Orden.IdOrden]
     Notas:
       - Solo escribe si algun valor cambia.
+      - Una orden sin IdPedido (o inexistente) tampoco inserta registro en Log.
       - Como el resto de los SP del repo, registra el resultado en Log y no relanza el error.
     */
     SET NOCOUNT ON;
+
+    -- Salida inmediata para ordenes que no vienen de un pedido
+    IF NOT EXISTS (
+        SELECT 1
+        FROM Orden WITH (NOLOCK)
+        WHERE IdOrden = @IdOrden
+          AND IdPedido IS NOT NULL
+    )
+        RETURN 0;
 
     BEGIN TRY
         DECLARE @Filas INT = 0;
