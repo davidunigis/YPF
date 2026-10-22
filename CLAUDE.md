@@ -106,6 +106,7 @@ IF NOT EXISTS (
 - [ ] `Z_SP_YPF_SetDatosOT` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 351.
 - [ ] `Z_SP_YPF_SetDatosOTUM` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 653 (se detona desde el 351).
 - [ ] `Z_SP_YPF_SetDatosOrden` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 300 (cadena 300 → 351 → 653).
+- [ ] `Z_SP_YPF_Set_DatosRuta` — salida temprana aplicada (22/10/2026) sobre `Ruta.IdJornada -> Jornada.IdOperacion = 141` (recibe `@IdRuta`); probado en un SQL Server de prueba comparando original vs modificado, pendiente de probar en la base. Proceso ligado: no informado.
 - [x] `Orden_update_tipoCita` — **NO se modifica**. Solo se subió el original. Ver "Hallazgos para el informe".
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 

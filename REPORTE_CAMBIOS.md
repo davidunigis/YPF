@@ -1,6 +1,6 @@
 # Reporte de cambios — Rama LP-Solidas
 
-- **Fecha:** 07/10/2026
+- **Fecha:** 07/10/2026 (actualizado el 22/10/2026: se agrega `Z_SP_YPF_Set_DatosRuta`, sección 3.7)
 - **Autor de los cambios:** David de la Cruz
 - **Base de datos:** `UNIGIS_DataRepository_YPF`
 - **Objetivo:** que ciertos SP **no se ejecuten** para viajes cuya jornada pertenece a la operación **141**
@@ -17,6 +17,7 @@
 | `Z_SP_YPF_SetDatosOT` | `@IdOrden BigInt` | Modificado | `028aa50` original · `82fe504` regla y comentario |
 | `Z_SP_YPF_SetDatosOTUM` | `@IdOrden BIGINT` | Modificado | `652cc2c` original · `b400a20` regla y comentario |
 | `Z_SP_YPF_SetDatosOrden` | `@IdOrden BigInt` | Modificado | `f6d062d` original · `7f47ff7` regla y comentario |
+| `Z_SP_YPF_Set_DatosRuta` | `@IdRuta BigInt` | Modificado | `6e0ce15` original · `9e3e411` regla y comentario |
 | `Orden_update_tipoCita` | `@IdOrden BigInt` | **No modificado** | `f4f3030` original |
 
 Además, el informe documenta los procesos de la plataforma ligados a los SP modificados (el 352 en la
@@ -201,7 +202,40 @@ operación (`IdOperacion` NULL). Esto coincide con la observación general de la
 también validan la 141 por su cuenta, como segunda validación independiente de la configuración de los
 procesos.
 
-Detalles comunes del patrón (aplican a los seis SP modificados): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
+### 3.7 `Z_SP_YPF_Set_DatosRuta`
+
+Archivo: `SP/Z_SP_YPF_Set_DatosRuta.sql`
+
+- Recibe `@IdRuta BigInt`. La ruta no tiene operación propia en este SP, así que la validación se hace por su
+  jornada (`Ruta.IdJornada → Jornada.IdJornada → Jornada.IdOperacion = 141`). Se agregó antes del
+  `Begin try`:
+  - `SET NOCOUNT ON;`
+  - `IF EXISTS (SELECT 1 FROM Ruta ... JOIN Jornada ... WHERE Ruta.IdRuta = @IdRuta AND Jornada.IdOperacion = 141) RETURN 0;`
+- Se dejó constancia con fecha y autor (22/10/2026, David de la Cruz) en un comentario al inicio del SP.
+- La lógica original no cambió. El texto del SP original llegó en una sola línea; en el commit `6e0ce15` solo se
+  restauraron saltos de línea e indentación (idéntico al original al colapsar espacios), para que el diff del
+  cambio muestre únicamente lo agregado (19 líneas agregadas, ninguna modificada).
+- **Efecto en la 141:** no ejecuta nada. Antes, para una ruta de la 141 se ejecutaba lo siguiente (varios pasos
+  dependen del pedido de las órdenes de la ruta):
+  - asignación fija de conductor 1 y vehículo 7 en la ruta, cuando la operación del pedido es 2 o 6;
+  - carga de la unidad requerida en `OrdenItem.Varchar1` y del tipo de vehículo sugerido en
+    `Orden.Telefono2` y `Ruta.Varchar1`;
+  - ajuste de distancia y tiempos de la ruta;
+  - con el pedido en estado 4: `IdEstadoRuta = 8` y solicitudes en `CambioEstadoSolicitud` para las órdenes de
+    ese pedido (estado 69 → 97, estado 100 → 70);
+  - registro `'OK IdRuta=...'` en `Log`.
+- **Efecto en el resto:** sin cambios. Una ruta cuya jornada tiene `IdOperacion` NULL, o sin jornada, se sigue
+  ejecutando como antes.
+- **Observación:** el SP usa internamente `Pedido.IdOperacion` (2 y 6) para decidir su bloque de conductor y
+  vehículo; es la operación del pedido y no la de la jornada. La exclusión de la 141 se hace por la jornada de
+  la ruta, igual que en el resto de los SP.
+- **Proceso vinculado:** no informado. Hay que revisarlo, porque probablemente esté configurado a nivel general
+  (ver sección 2).
+- **Prueba realizada:** en un SQL Server de prueba (no en la base de YPF), con un esquema reducido, se corrió la
+  versión original y la modificada sobre los mismos datos: para las rutas que no son de la 141 el resultado es
+  idéntico y la ruta de la 141 no cambia nada ni deja registro en `Log`. Falta probarlo en la base real.
+
+Detalles comunes del patrón (aplican a los siete SP modificados; en `Z_SP_YPF_Set_DatosRuta` la operación se toma de la jornada de la ruta): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
 registre un error) y `= 141` dentro de un `EXISTS` (no `!= 141`), así los viajes con `IdOperacion` NULL
 siguen ejecutándose.
 
@@ -284,3 +318,11 @@ Para `Z_SP_YPF_SetDatosOrden`:
 | Orden con `IdOperacion = 141` (que no sea de nivel 0) | No cambia nada (ni la orden, ni el pedido, ni el pack, ni la jornada), no da error y no inserta en `Log`. |
 | Orden de otra operación | Se comporta igual que antes del cambio. |
 | Orden con `IdOperacion` NULL | Se sigue ejecutando como antes. |
+
+Para `Z_SP_YPF_Set_DatosRuta`:
+
+| Caso | Resultado esperado |
+|---|---|
+| Ruta cuya jornada es de la operación 141 | No cambia nada (ni la ruta, ni las órdenes, ni `CambioEstadoSolicitud`), no da error y no inserta en `Log`. |
+| Ruta de otra operación | Se comporta igual que antes del cambio. |
+| Ruta cuya jornada tiene `IdOperacion` NULL | Se sigue ejecutando como antes. |
