@@ -6,6 +6,25 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 ALTER Procedure [dbo].[Z_SP_YPF_Set_DatosRuta] @IdRuta BigInt As Begin
+	/*
+	Modificado: 22/10/2026 - David de la Cruz
+	Cambio: se agrega SET NOCOUNT ON y una salida temprana (IF EXISTS ... RETURN 0) para que el SP
+	        no se ejecute en rutas cuya jornada pertenece a la operacion 141
+	        (Ruta.IdJornada -> Jornada.IdOperacion = 141). Para el resto de operaciones
+	        el comportamiento no cambia. En rutas de la 141 tampoco se inserta registro en Log.
+	*/
+	SET NOCOUNT ON;
+
+	-- Salida inmediata para rutas de la operacion 141
+	IF EXISTS (
+		SELECT 1
+		FROM Ruta With(NoLock)
+		JOIN Jornada With(NoLock) ON Ruta.IdJornada = Jornada.IdJornada
+		WHERE Ruta.IdRuta = @IdRuta
+			AND Jornada.IdOperacion = 141
+	)
+		RETURN 0;
+
 	Begin try
 		DECLARE @IdOperacion Bigint=0,@IdPedido Bigint=0,@IdEstadoPedido Int=0,@Ruta Bigint=0,@IdJornada Bigint=0,@TvSugerido Varchar (50)=''
 		SELECT TOP 1 @IdOperacion=P.IdOperacion,@IdPedido=P.IdPedido,@IdJornada=O.IdJornada,@Ruta=R.Ruta,@IdEstadoPedido=P.IdEstadoPedido
