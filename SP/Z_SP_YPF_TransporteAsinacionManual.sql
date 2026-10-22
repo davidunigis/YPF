@@ -16,6 +16,9 @@ AS BEGIN
 	        ya hace el SP con las jornadas excluidas de abajo, y no inserta registro en Log.
 	        Para el resto de operaciones el comportamiento no cambia. Se usa CREATE OR ALTER para poder
 	        aplicarlo exista o no el SP.
+	Modificado: 22/10/2026 - la categoria de Log pasa de 'TransporteAsinacionManual' (25) a 'TranspAsigManual' (16):
+	        Log.Categoria admite solo 20 caracteres y con la categoria anterior el INSERT fallaba con el error
+	        2628 (datos truncados) despues de devolver el resultado.
 	*/
 
 SET NOCOUNT ON; 
@@ -79,8 +82,8 @@ DECLARE @Mensaje VARCHAR(500) = ''
 
  
 
-Insert log (Categoria,Descripcion,FechaHora) values ('TransporteAsinacionManual','Proceso_Ejecutado_Exito ' + CONVERT(VARCHAR, @IdViaje) ,getutcdate()) end try 
+Insert log (Categoria,Descripcion,FechaHora) values ('TranspAsigManual','Proceso_Ejecutado_Exito ' + CONVERT(VARCHAR, @IdViaje) ,getutcdate()) end try 
 
-begin catch insert log (Categoria,Descripcion,FechaHora) values ('TransporteAsinacionManual','Error:'+ CONVERT(VARCHAR, @IdViaje) +ERROR_MESSAGE(),getutcdate()) end catch 
+begin catch insert log (Categoria,Descripcion,FechaHora) values ('TranspAsigManual','Error:'+ CONVERT(VARCHAR, @IdViaje) +ERROR_MESSAGE(),getutcdate()) end catch 
 
 END
