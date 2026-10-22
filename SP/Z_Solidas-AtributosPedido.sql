@@ -15,6 +15,8 @@ BEGIN
     Objetivo: se ejecuta cuando se crea un pedido (recibe el IdPedido). Busca la OT de la que nacio
               el pedido (OrdenPedido.IdOrden) y, si la OT esta en IdEstadoOrden = 60 (OT Ingresado),
               pide su cambio a 62 (OT En Proceso) con una solicitud en CambioEstadoSolicitud.
+    Modificado: 22/10/2026 - ademas de lo anterior, setea en el pedido InicioHorario1 = 0 y
+              FinHorario1 = 2359 (Pedido.InicioHorario1 / Pedido.FinHorario1).
     Llamada desde la plataforma:  EXEC [dbo].[Z_Solidas-AtributosPedido] [Pedido.IdPedido]
     Notas:
       - El cambio de estado es de la OT (Entidad = 'Orden'), no del pedido.
@@ -58,6 +60,14 @@ BEGIN
           );
 
         SET @Solicitudes = @@ROWCOUNT;
+
+        /*Horario del pedido: todo el dia (solo escribe si cambia)*/
+        UPDATE Pedido
+        SET InicioHorario1 = 0,
+            FinHorario1    = 2359
+        WHERE IdPedido = @IdPedido
+          AND (ISNULL(InicioHorario1, -1) <> 0
+               OR ISNULL(FinHorario1, -1) <> 2359);
 
         INSERT Log (Categoria, Descripcion, FechaHora)
         VALUES ('Solidas-AtributosPedido',
