@@ -23,6 +23,8 @@
       - FK_Parada_Orden         : Parada.IdOrden         -> Orden        (Orden despues de Parada)
       - FK_Orden_Jornada        : Orden.IdJornada        -> Jornada      (Jornada despues de Orden)
       - FK_RutaTraceEstado_Ruta : RutaTraceEstado.IdRuta -> Ruta         (RutaTraceEstado antes de Ruta; se agrego a la lista)
+      - FK_PedidoTraceEstado_OrdenTraceEstado : PedidoTraceEstado.IdOrdenTraceEstado -> OrdenTraceEstado
+                                                 (PedidoTraceEstado antes de OrdenTraceEstado)
     Jornada va ademas AL FINAL porque los pasos de viaje/parada/ruta ubican sus filas con
     "... FROM Jornada WHERE IdOperacion = ...": si Jornada se borrara antes, esas subconsultas no
     devolverian nada y esos pasos no borrarian nada.
@@ -34,6 +36,12 @@
     haria fallar su paso con el error 547: agregar su DELETE a la lista (antes de la tabla a la que
     apunta) y volver a correr. Cubre las FK de una sola columna; las de varias columnas se informan
     como "no verificada".
+    Ademas revisa las FK ENTRE las tablas de la lista (resultado "Problemas de orden o cobertura"):
+      - ORDEN: la tabla hija se borra en un paso POSTERIOR al de su tabla padre. Mover el DELETE de la
+        hija antes que el de la padre.
+      - COBERTURA: hay filas de la hija que apuntan a lo que se va a borrar en la padre y que ningun
+        DELETE de la hija alcanza; bloquean el borrado sin importar el orden. Ampliar el DELETE de la hija
+        o revisar esos datos (columna Filas = cuantas son).
 
   LIMITES
     - Solo borra lo que esta en la lista. Una tabla que dependa de estas y no figure aqui hace
@@ -73,6 +81,7 @@ BEGIN TRY
         (N'ConceptoValorizadoGuia', N'IdViaje IN (SELECT IdViaje FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
         (N'Viaje', N'IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion)'),
         (N'OrdenTrayecto', N'(IdOrdenOrigen IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)) OR (IdOrdenDestino IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion))'),
+        (N'PedidoTraceEstado', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
         (N'OrdenTraceEstado', N'IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)'),
         (N'OrdenPedido', N'(IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)) OR (IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion))'),
         (N'BitacoraOrden', N'IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion)'),
@@ -86,7 +95,6 @@ BEGIN TRY
         (N'PedidoItem', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
         (N'Pedido_Dyn', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
         (N'BitacoraPedido', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
-        (N'PedidoTraceEstado', N'IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion)'),
         (N'Pedido', N'IdOperacion = @IdOperacion'),
         (N'BitacoraRuta', N'IdRuta IN (SELECT IdRuta FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
         (N'RutaTraceEstado', N'IdRuta IN (SELECT IdRuta FROM Ruta WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion))'),
@@ -140,6 +148,100 @@ BEGIN TRY
 END TRY
 BEGIN CATCH
     PRINT N'No se pudo ejecutar el diagnostico (el borrado sigue): ' + ERROR_MESSAGE();
+END CATCH
+
+
+-- DIAGNOSTICO B (solo lectura): FK entre tablas de la lista -> orden de borrado y filas sin cubrir
+BEGIN TRY
+    DECLARE @Pasos TABLE (Paso INT PRIMARY KEY, Tabla SYSNAME, Col SYSNAME);
+    INSERT @Pasos (Paso, Tabla, Col) VALUES
+        (1, N'ViajeAgrupadorViaje', N'IdViaje'),
+        (2, N'Alarma', N'IdParada'),
+        (3, N'ParadaTraceEstado', N'IdParada'),
+        (4, N'BitacoraParada', N'IdParada'),
+        (5, N'ParadaItemCantidad', N'IdParadaItem'),
+        (6, N'ParadaItem_Dyn', N'IdParadaItem'),
+        (7, N'ParadaItem', N'IdParada'),
+        (8, N'EstadiaParada', N'IdParada'),
+        (9, N'Parada', N'IdViaje'),
+        (10, N'ViajeRecurso', N'IdViaje'),
+        (11, N'BitacoraViaje', N'IdViaje'),
+        (12, N'GuiaViaje', N'IdViaje'),
+        (13, N'EstadoViajeTraceEstado', N'IdViaje'),
+        (14, N'ConceptoValorizadoGuia', N'IdViaje'),
+        (15, N'Viaje', N'IdJornada'),
+        (16, N'OrdenTrayecto', N'IdOrdenOrigen'),
+        (17, N'OrdenTrayecto', N'IdOrdenDestino'),
+        (18, N'PedidoTraceEstado', N'IdPedido'),
+        (19, N'OrdenTraceEstado', N'IdOrden'),
+        (20, N'OrdenPedido', N'IdOrden'),
+        (21, N'BitacoraOrden', N'IdOrden'),
+        (22, N'OrdenItemOT', N'IdOrdenItem'),
+        (23, N'OrdenItemPedidoItem', N'IdOrdenItem'),
+        (24, N'OrdenItem_Dyn', N'IdOrdenItem'),
+        (25, N'OrdenItem', N'IdOrden'),
+        (26, N'Orden_Dyn', N'IdOrden'),
+        (27, N'Orden', N'IdOperacion'),
+        (28, N'OrdenPedido', N'IdPedido'),
+        (29, N'OrdenItemPedidoItem', N'IdPedidoItem'),
+        (30, N'PedidoItem_Dyn', N'IdPedidoItem'),
+        (31, N'PedidoItem', N'IdPedido'),
+        (32, N'Pedido_Dyn', N'IdPedido'),
+        (33, N'BitacoraPedido', N'IdPedido'),
+        (34, N'Pedido', N'IdOperacion'),
+        (35, N'BitacoraRuta', N'IdRuta'),
+        (36, N'RutaTraceEstado', N'IdRuta'),
+        (37, N'Ruta', N'IdJornada'),
+        (38, N'OrdenParada', N'IdJornada'),
+        (39, N'BitacoraJornada', N'IdJornada'),
+        (40, N'Jornada', N'IdOperacion')
+    ;
+
+    DECLARE @Prob TABLE (Problema VARCHAR(10), FK SYSNAME, TablaHija SYSNAME, PasoHija INT, ApuntaA SYSNAME, PasoPadre INT, Filas BIGINT NULL);
+    DECLARE @bfk SYSNAME, @bh SYSNAME, @bp SYSNAME, @bhp INT, @bpp INT, @bsql NVARCHAR(MAX), @bn BIGINT;
+
+    DECLARE bcur CURSOR LOCAL FAST_FORWARD FOR
+        SELECT fk.name, ch.Tabla, pa.Tabla,
+               ISNULL((SELECT MAX(Paso) FROM @Pasos WHERE Tabla = ch.Tabla AND Col = COL_NAME(fk.parent_object_id, k.PCol)),
+                      (SELECT MAX(Paso) FROM @Pasos WHERE Tabla = ch.Tabla)),
+               (SELECT MIN(Paso) FROM @Pasos WHERE Tabla = pa.Tabla),
+               N'SELECT @n = COUNT_BIG(*) FROM ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id)) + N'.' + QUOTENAME(ch.Tabla)
+             + N' WHERE ' + QUOTENAME(COL_NAME(fk.parent_object_id, k.PCol)) + N' IN (SELECT ' + QUOTENAME(COL_NAME(fk.referenced_object_id, k.RCol))
+             + N' FROM ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.referenced_object_id)) + N'.' + QUOTENAME(pa.Tabla) + N' WHERE ' + pa.Pred + N')'
+             + N' AND (CASE WHEN ' + ch.Pred + N' THEN 0 ELSE 1 END) = 1'
+        FROM sys.foreign_keys fk
+        JOIN @Cub ch ON ch.Tabla = OBJECT_NAME(fk.parent_object_id)
+        JOIN @Cub pa ON pa.Tabla = OBJECT_NAME(fk.referenced_object_id)
+        CROSS APPLY (SELECT COUNT(*) AS N, MIN(parent_column_id) AS PCol, MIN(referenced_column_id) AS RCol
+                     FROM sys.foreign_key_columns WHERE constraint_object_id = fk.object_id) k
+        WHERE ch.Tabla <> pa.Tabla AND k.N = 1;             -- solo FK de una columna entre tablas distintas de la lista
+
+    OPEN bcur;
+    FETCH NEXT FROM bcur INTO @bfk, @bh, @bp, @bhp, @bpp, @bsql;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        IF @bhp > @bpp                                       -- la hija se borra DESPUES que la padre
+            INSERT @Prob VALUES ('ORDEN', @bfk, @bh, @bhp, @bp, @bpp, NULL);
+
+        SET @bn = 0;                                         -- filas de la hija que apuntan a lo que se borra y ningun DELETE de la hija alcanza
+        EXEC sp_executesql @bsql, N'@n BIGINT OUTPUT, @IdOperacion INT', @n = @bn OUTPUT, @IdOperacion = @IdOperacion;
+        IF @bn > 0
+            INSERT @Prob VALUES ('COBERTURA', @bfk, @bh, @bhp, @bp, @bpp, @bn);
+
+        FETCH NEXT FROM bcur INTO @bfk, @bh, @bp, @bhp, @bpp, @bsql;
+    END
+    CLOSE bcur; DEALLOCATE bcur;
+
+    IF EXISTS (SELECT 1 FROM @Prob)
+    BEGIN
+        PRINT N'*** ATENCION: hay FK entre tablas de la lista que el orden actual no respeta o que dejan filas sin cubrir (resultado "Problemas de orden o cobertura").';
+        PRINT N'    ORDEN: mover el DELETE de la tabla hija antes que el de la padre. COBERTURA: ampliar el DELETE de la hija o revisar esas filas.';
+        SELECT [Problemas de orden o cobertura] = Problema, FK, TablaHija, PasoHija, ApuntaA, PasoPadre, Filas FROM @Prob ORDER BY Problema, PasoHija;
+    END
+    ELSE PRINT N'Diagnostico: el orden de la lista respeta las FK entre sus tablas y no hay filas sin cubrir.';
+END TRY
+BEGIN CATCH
+    PRINT N'No se pudo ejecutar el diagnostico de orden (el borrado sigue): ' + ERROR_MESSAGE();
 END CATCH
 
 BEGIN TRY
@@ -222,7 +324,7 @@ BEGIN TRY
     DELETE FROM Viaje WHERE IdJornada IN (SELECT IdJornada FROM Jornada WHERE IdOperacion = @IdOperacion);
     INSERT @Log (Paso, Tabla, Filas) VALUES (15, N'Viaje (IdJornada)', @@ROWCOUNT);
 
-    ----- GRUPO 2 - Ordenes (antes que Pedido: Orden.IdPedido -> Pedido; antes que OrdenParada y Jornada) -----
+    ----- GRUPO 2 - Ordenes (PedidoTraceEstado antes que OrdenTraceEstado: PedidoTraceEstado.IdOrdenTraceEstado -> OrdenTraceEstado; Ordenes antes que Pedido: Orden.IdPedido -> Pedido; antes que OrdenParada y Jornada) -----
 
     -- 16) OrdenTrayecto (IdOrdenOrigen)
     SET @Paso = N'16 - OrdenTrayecto (IdOrdenOrigen)';
@@ -234,87 +336,87 @@ BEGIN TRY
     DELETE FROM OrdenTrayecto WHERE IdOrdenDestino IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion);
     INSERT @Log (Paso, Tabla, Filas) VALUES (17, N'OrdenTrayecto (IdOrdenDestino)', @@ROWCOUNT);
 
-    -- 18) OrdenTraceEstado (IdOrden)
-    SET @Paso = N'18 - OrdenTraceEstado (IdOrden)';
+    -- 18) PedidoTraceEstado (IdPedido)
+    SET @Paso = N'18 - PedidoTraceEstado (IdPedido)';
+    DELETE FROM PedidoTraceEstado WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (18, N'PedidoTraceEstado (IdPedido)', @@ROWCOUNT);
+
+    -- 19) OrdenTraceEstado (IdOrden)
+    SET @Paso = N'19 - OrdenTraceEstado (IdOrden)';
     DELETE FROM OrdenTraceEstado WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (18, N'OrdenTraceEstado (IdOrden)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (19, N'OrdenTraceEstado (IdOrden)', @@ROWCOUNT);
 
-    -- 19) OrdenPedido (IdOrden)
-    SET @Paso = N'19 - OrdenPedido (IdOrden)';
+    -- 20) OrdenPedido (IdOrden)
+    SET @Paso = N'20 - OrdenPedido (IdOrden)';
     DELETE FROM OrdenPedido WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (19, N'OrdenPedido (IdOrden)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (20, N'OrdenPedido (IdOrden)', @@ROWCOUNT);
 
-    -- 20) BitacoraOrden (IdOrden)
-    SET @Paso = N'20 - BitacoraOrden (IdOrden)';
+    -- 21) BitacoraOrden (IdOrden)
+    SET @Paso = N'21 - BitacoraOrden (IdOrden)';
     DELETE FROM BitacoraOrden WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (20, N'BitacoraOrden (IdOrden)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (21, N'BitacoraOrden (IdOrden)', @@ROWCOUNT);
 
-    -- 21) OrdenItemOT (IdOrdenItem)
-    SET @Paso = N'21 - OrdenItemOT (IdOrdenItem)';
+    -- 22) OrdenItemOT (IdOrdenItem)
+    SET @Paso = N'22 - OrdenItemOT (IdOrdenItem)';
     DELETE FROM OrdenItemOT WHERE IdOrdenItem IN (SELECT IdOrdenItem FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (21, N'OrdenItemOT (IdOrdenItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (22, N'OrdenItemOT (IdOrdenItem)', @@ROWCOUNT);
 
-    -- 22) OrdenItemPedidoItem (IdOrdenItem)
-    SET @Paso = N'22 - OrdenItemPedidoItem (IdOrdenItem)';
+    -- 23) OrdenItemPedidoItem (IdOrdenItem)
+    SET @Paso = N'23 - OrdenItemPedidoItem (IdOrdenItem)';
     DELETE FROM OrdenItemPedidoItem WHERE IdOrdenItem IN (SELECT IdOrdenItem FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (22, N'OrdenItemPedidoItem (IdOrdenItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (23, N'OrdenItemPedidoItem (IdOrdenItem)', @@ROWCOUNT);
 
-    -- 23) OrdenItem_Dyn (IdOrdenItem)
-    SET @Paso = N'23 - OrdenItem_Dyn (IdOrdenItem)';
+    -- 24) OrdenItem_Dyn (IdOrdenItem)
+    SET @Paso = N'24 - OrdenItem_Dyn (IdOrdenItem)';
     DELETE FROM OrdenItem_Dyn WHERE IdOrdenItem IN (SELECT IdOrdenItem FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (23, N'OrdenItem_Dyn (IdOrdenItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (24, N'OrdenItem_Dyn (IdOrdenItem)', @@ROWCOUNT);
 
-    -- 24) OrdenItem (IdOrden)
-    SET @Paso = N'24 - OrdenItem (IdOrden)';
+    -- 25) OrdenItem (IdOrden)
+    SET @Paso = N'25 - OrdenItem (IdOrden)';
     DELETE FROM OrdenItem WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (24, N'OrdenItem (IdOrden)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (25, N'OrdenItem (IdOrden)', @@ROWCOUNT);
 
-    -- 25) Orden_Dyn (IdOrden)
-    SET @Paso = N'25 - Orden_Dyn (IdOrden)';
+    -- 26) Orden_Dyn (IdOrden)
+    SET @Paso = N'26 - Orden_Dyn (IdOrden)';
     DELETE FROM Orden_Dyn WHERE IdOrden IN (SELECT IdOrden FROM Orden WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (25, N'Orden_Dyn (IdOrden)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (26, N'Orden_Dyn (IdOrden)', @@ROWCOUNT);
 
-    -- 26) Orden (IdOperacion)
-    SET @Paso = N'26 - Orden (IdOperacion)';
+    -- 27) Orden (IdOperacion)
+    SET @Paso = N'27 - Orden (IdOperacion)';
     DELETE FROM Orden WHERE IdOperacion = @IdOperacion;
-    INSERT @Log (Paso, Tabla, Filas) VALUES (26, N'Orden (IdOperacion)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (27, N'Orden (IdOperacion)', @@ROWCOUNT);
 
     ----- GRUPO 3 - Pedidos (despues de OrdenItem y Orden: OrdenItem.IdPedidoItem -> PedidoItem, Orden.IdPedido -> Pedido) -----
 
-    -- 27) OrdenPedido (IdPedido)
-    SET @Paso = N'27 - OrdenPedido (IdPedido)';
+    -- 28) OrdenPedido (IdPedido)
+    SET @Paso = N'28 - OrdenPedido (IdPedido)';
     DELETE FROM OrdenPedido WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (27, N'OrdenPedido (IdPedido)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (28, N'OrdenPedido (IdPedido)', @@ROWCOUNT);
 
-    -- 28) OrdenItemPedidoItem (IdPedidoItem)
-    SET @Paso = N'28 - OrdenItemPedidoItem (IdPedidoItem)';
+    -- 29) OrdenItemPedidoItem (IdPedidoItem)
+    SET @Paso = N'29 - OrdenItemPedidoItem (IdPedidoItem)';
     DELETE FROM OrdenItemPedidoItem WHERE IdPedidoItem IN (SELECT IdPedidoItem FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (28, N'OrdenItemPedidoItem (IdPedidoItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (29, N'OrdenItemPedidoItem (IdPedidoItem)', @@ROWCOUNT);
 
-    -- 29) PedidoItem_Dyn (IdPedidoItem)
-    SET @Paso = N'29 - PedidoItem_Dyn (IdPedidoItem)';
+    -- 30) PedidoItem_Dyn (IdPedidoItem)
+    SET @Paso = N'30 - PedidoItem_Dyn (IdPedidoItem)';
     DELETE FROM PedidoItem_Dyn WHERE IdPedidoItem IN (SELECT IdPedidoItem FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion));
-    INSERT @Log (Paso, Tabla, Filas) VALUES (29, N'PedidoItem_Dyn (IdPedidoItem)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (30, N'PedidoItem_Dyn (IdPedidoItem)', @@ROWCOUNT);
 
-    -- 30) PedidoItem (IdPedido)
-    SET @Paso = N'30 - PedidoItem (IdPedido)';
+    -- 31) PedidoItem (IdPedido)
+    SET @Paso = N'31 - PedidoItem (IdPedido)';
     DELETE FROM PedidoItem WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (30, N'PedidoItem (IdPedido)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (31, N'PedidoItem (IdPedido)', @@ROWCOUNT);
 
-    -- 31) Pedido_Dyn (IdPedido)
-    SET @Paso = N'31 - Pedido_Dyn (IdPedido)';
+    -- 32) Pedido_Dyn (IdPedido)
+    SET @Paso = N'32 - Pedido_Dyn (IdPedido)';
     DELETE FROM Pedido_Dyn WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (31, N'Pedido_Dyn (IdPedido)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (32, N'Pedido_Dyn (IdPedido)', @@ROWCOUNT);
 
-    -- 32) BitacoraPedido (IdPedido)
-    SET @Paso = N'32 - BitacoraPedido (IdPedido)';
+    -- 33) BitacoraPedido (IdPedido)
+    SET @Paso = N'33 - BitacoraPedido (IdPedido)';
     DELETE FROM BitacoraPedido WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (32, N'BitacoraPedido (IdPedido)', @@ROWCOUNT);
-
-    -- 33) PedidoTraceEstado (IdPedido)
-    SET @Paso = N'33 - PedidoTraceEstado (IdPedido)';
-    DELETE FROM PedidoTraceEstado WHERE IdPedido IN (SELECT IdPedido FROM Pedido WHERE IdOperacion = @IdOperacion);
-    INSERT @Log (Paso, Tabla, Filas) VALUES (33, N'PedidoTraceEstado (IdPedido)', @@ROWCOUNT);
+    INSERT @Log (Paso, Tabla, Filas) VALUES (33, N'BitacoraPedido (IdPedido)', @@ROWCOUNT);
 
     -- 34) Pedido (IdOperacion)
     SET @Paso = N'34 - Pedido (IdOperacion)';
