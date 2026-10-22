@@ -1,6 +1,6 @@
 # Reporte de cambios — Rama LP-Solidas
 
-- **Fecha:** 07/10/2026 (actualizado el 22/10/2026: se agrega `Z_SP_YPF_Set_DatosRuta`, sección 3.7)
+- **Fecha:** 07/10/2026 (actualizado el 22/10/2026: se agregan `Z_SP_YPF_Set_DatosRuta`, sección 3.7, y `Z_SP_YPF_TransporteAsinacionManual`, sección 3.8)
 - **Autor de los cambios:** David de la Cruz
 - **Base de datos:** `UNIGIS_DataRepository_YPF`
 - **Objetivo:** que ciertos SP **no se ejecuten** para viajes cuya jornada pertenece a la operación **141**
@@ -18,6 +18,7 @@
 | `Z_SP_YPF_SetDatosOTUM` | `@IdOrden BIGINT` | Modificado | `652cc2c` original · `b400a20` regla y comentario |
 | `Z_SP_YPF_SetDatosOrden` | `@IdOrden BigInt` | Modificado | `f6d062d` original · `7f47ff7` regla y comentario |
 | `Z_SP_YPF_Set_DatosRuta` | `@IdRuta BigInt` | Modificado | `6e0ce15` original · `9e3e411` regla y comentario |
+| `Z_SP_YPF_TransporteAsinacionManual` | `@IdViaje bigInt` | Modificado | `c4d26b4` original · `891b973` regla y comentario · `22c64a8` categoría de `Log` |
 | `Orden_update_tipoCita` | `@IdOrden BigInt` | **No modificado** | `f4f3030` original |
 
 Además, el informe documenta los procesos de la plataforma ligados a los SP modificados (el 352 en la
@@ -235,7 +236,36 @@ Archivo: `SP/Z_SP_YPF_Set_DatosRuta.sql`
   versión original y la modificada sobre los mismos datos: para las rutas que no son de la 141 el resultado es
   idéntico y la ruta de la 141 no cambia nada ni deja registro en `Log`. Falta probarlo en la base real.
 
-Detalles comunes del patrón (aplican a los siete SP modificados; en `Z_SP_YPF_Set_DatosRuta` la operación se toma de la jornada de la ruta): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
+### 3.8 `Z_SP_YPF_TransporteAsinacionManual`
+
+Archivo: `SP/Z_SP_YPF_TransporteAsinacionManual.sql`
+
+- Recibe `@IdViaje bigInt`. Es un **SP de validación**: devuelve una fila `[Resultado]`/`[Mensaje]` que la
+  plataforma interpreta (`OK` deja continuar; `NULL` + mensaje bloquea). Valida que el transporte del
+  vehículo coincida con el del viaje, que no sea "NO DETERMINADO" (1) y que el tipo de vehículo coincida con
+  el de la ruta.
+- La validación de la 141 se hace por la jornada del viaje (`Viaje.IdJornada → Jornada.IdOperacion = 141`) y se
+  agregó justo después de `SET NOCOUNT ON;`, antes del `begin try`.
+- **Diferencia con el patrón de los demás SP:** en lugar de `RETURN 0` sin devolver nada, en los viajes de la
+  141 el SP devuelve `OK` y luego `RETURN 0`. Al ser una validación con resultado esperado por la plataforma,
+  no devolver filas podría interpretarse como un fallo y bloquear la acción. Es el mismo criterio que ya aplica
+  el SP a las jornadas que excluye por su cuenta (las últimas 500 de las operaciones 3 y 4): deja el mensaje
+  vacío y devuelve `OK`. En la 141 tampoco se inserta registro en `Log`.
+- Se usa `CREATE OR ALTER` (el original era `CREATE`) para poder aplicarlo exista o no el SP.
+- **Efecto en la 141:** no valida nada. Antes, un viaje de la 141 con el transporte del vehículo distinto al del
+  viaje, con transporte "NO DETERMINADO" o con tipo de vehículo distinto al de la ruta recibía el mensaje de
+  bloqueo; ahora recibe `OK`.
+- **Efecto en el resto:** sin cambios.
+- **Corrección aparte (commit `22c64a8`):** la categoría de `Log` `TransporteAsinacionManual` tiene 25
+  caracteres y `Log.Categoria` admite 20, así que el `INSERT` fallaba con el error 2628 (datos truncados) para
+  cualquier viaje, después de devolver el resultado. Pasa a `TranspAsigManual` (16). No es parte de la regla de
+  la 141; se hizo en un commit separado por si se prefiere descartarlo.
+- **Proceso vinculado:** no informado. Probablemente esté configurado a nivel general (ver sección 2).
+- **Prueba realizada:** en un SQL Server de prueba (no en la base de YPF) se corrió la versión original y la
+  modificada sobre los mismos datos: para los viajes que no son de la 141 el resultado es idéntico, y el viaje de
+  la 141 devuelve `OK` sin escribir en `Log`. Falta probarlo en la base real.
+
+Detalles comunes del patrón (aplican a los ocho SP modificados; en `Z_SP_YPF_Set_DatosRuta` la operación se toma de la jornada de la ruta, y `Z_SP_YPF_TransporteAsinacionManual`, al ser de validación, devuelve `OK` en lugar de salir sin resultado): se usa `RETURN 0` (sin `RAISERROR` ni `THROW`, para que la plataforma no
 registre un error) y `= 141` dentro de un `EXISTS` (no `!= 141`), así los viajes con `IdOperacion` NULL
 siguen ejecutándose.
 
@@ -326,3 +356,12 @@ Para `Z_SP_YPF_Set_DatosRuta`:
 | Ruta cuya jornada es de la operación 141 | No cambia nada (ni la ruta, ni las órdenes, ni `CambioEstadoSolicitud`), no da error y no inserta en `Log`. |
 | Ruta de otra operación | Se comporta igual que antes del cambio. |
 | Ruta cuya jornada tiene `IdOperacion` NULL | Se sigue ejecutando como antes. |
+
+Para `Z_SP_YPF_TransporteAsinacionManual`:
+
+| Caso | Resultado esperado |
+|---|---|
+| Viaje de la operación 141 (aunque el transporte o el tipo de vehículo no coincidan) | Devuelve `OK`, no valida nada y no inserta en `Log`. |
+| Viaje de otra operación | Se comporta igual que antes del cambio (mensaje de bloqueo u `OK`, según los datos). |
+| Viaje cuya jornada tiene `IdOperacion` NULL | Se sigue validando como antes. |
+| Viaje de otra operación, con `Log.Categoria` de 20 caracteres | Devuelve el resultado y escribe en `Log` con la categoría `TranspAsigManual`, sin error. |

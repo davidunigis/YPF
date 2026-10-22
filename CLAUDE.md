@@ -94,6 +94,20 @@ IF EXISTS (
     RETURN 0;
 ```
 
+### Variante para SP de validación (devuelven `[Resultado]`/`[Mensaje]`)
+
+La plataforma espera una fila de resultado, así que en la 141 no se sale sin devolver nada: se devuelve
+`OK` (no valida, no bloquea) y se sale, sin escribir en `Log`. Ejemplo: `Z_SP_YPF_TransporteAsinacionManual`.
+
+```sql
+IF EXISTS (SELECT 1 FROM Viaje JOIN Jornada ON Viaje.IdJornada = Jornada.IdJornada
+           WHERE Viaje.IdViaje = @IdViaje AND Jornada.IdOperacion = 141)
+BEGIN
+    SELECT 'OK' [Resultado], NULL [Mensaje];
+    RETURN 0;
+END
+```
+
 ### Alternativa desde la llamada en la plataforma
 
 En la configuración de UNIGIS el SP se invoca con el placeholder `[Viaje.IdViaje]`, que la
@@ -120,6 +134,7 @@ IF NOT EXISTS (
 - [ ] `Z_SP_YPF_SetDatosOTUM` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 653 (se detona desde el 351).
 - [ ] `Z_SP_YPF_SetDatosOrden` — salida temprana aplicada (07/10/2026) sobre `Orden.IdOperacion = 141`; pendiente de probar en la base. Ligado al proceso 300 (cadena 300 → 351 → 653).
 - [ ] `Z_SP_YPF_Set_DatosRuta` — salida temprana aplicada (22/10/2026) sobre `Ruta.IdJornada -> Jornada.IdOperacion = 141` (recibe `@IdRuta`); probado en un SQL Server de prueba comparando original vs modificado, pendiente de probar en la base. Proceso ligado: no informado.
+- [ ] `Z_SP_YPF_TransporteAsinacionManual` — salida temprana aplicada (22/10/2026) sobre `Viaje.IdJornada -> Jornada.IdOperacion = 141` (recibe `@IdViaje`); **SP de validación: en la 141 devuelve `OK`** (ver variante abajo); además se acortó su categoría de `Log` a `TranspAsigManual` (límite de 20). Probado en un SQL Server de prueba, pendiente de probar en la base. Proceso ligado: no informado.
 - [x] `Orden_update_tipoCita` — **NO se modifica**. Solo se subió el original. Ver "Hallazgos para el informe".
 - (agregar aquí los demás SP conforme se vayan subiendo a `SP/`)
 
