@@ -5,11 +5,33 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE [dbo].[Z_SP_YPF_TransporteAsinacionManual] @IdViaje bigInt 
+CREATE OR ALTER PROCEDURE [dbo].[Z_SP_YPF_TransporteAsinacionManual] @IdViaje bigInt 
 
 AS BEGIN 
+	/*
+	Modificado: 22/10/2026 - David de la Cruz
+	Cambio: se agrega una salida temprana para que el SP no valide viajes cuya jornada pertenece a la
+	        operacion 141 (Viaje.IdJornada -> Jornada.IdOperacion = 141). Como es un SP de validacion que
+	        devuelve [Resultado]/[Mensaje], en esos viajes devuelve 'OK' (no valida, no bloquea), igual que
+	        ya hace el SP con las jornadas excluidas de abajo, y no inserta registro en Log.
+	        Para el resto de operaciones el comportamiento no cambia. Se usa CREATE OR ALTER para poder
+	        aplicarlo exista o no el SP.
+	*/
 
 SET NOCOUNT ON; 
+
+-- Salida inmediata para viajes de la operacion 141: no se valida, se devuelve OK
+IF EXISTS (
+		SELECT 1
+		FROM Viaje WITH (NOLOCK)
+		JOIN Jornada WITH (NOLOCK) ON Viaje.IdJornada = Jornada.IdJornada
+		WHERE Viaje.IdViaje = @IdViaje
+			AND Jornada.IdOperacion = 141
+		)
+BEGIN
+	SELECT 'OK' [Resultado], NULL [Mensaje];
+	RETURN 0;
+END
 
 begin try
 
