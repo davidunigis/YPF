@@ -210,4 +210,10 @@ cuando se agreguen más SP.
 - `Log.Categoria` admite **solo 20 caracteres** (error 2628 con `Solidas-AtributosOrden`, que tiene 22): las
   categorías que escriben los SP deben medir 20 o menos. En los SP nuevos el `INSERT` en `Log` va dentro de su
   propio `TRY/CATCH` para que un problema de `Log` no haga fallar al SP.
+- La base usa la collation `Modern_Spanish_CI_AS` y `tempdb` usa `SQL_Latin1_General_CP1_CI_AS`: en los SP con tablas
+  temporales (`#tabla`) las columnas de texto llevan `COLLATE DATABASE_DEFAULT`; si no, comparar contra una tabla real da
+  el error 468 (visto en `Z_SP_YPF_CalculaDisponibilidadPeriodos`). Las variables de tabla (`@t`) no tienen el problema.
+  Ese error es de compilación del enunciado: el `TRY/CATCH` del SP no lo atrapa y no queda en `Log`.
+  Para probar en el SQL Server de Docker, crear la base con `COLLATE Modern_Spanish_CI_AS` (la del servidor por defecto
+  es la de `tempdb` y no reproduce el problema).
 - Comunicación en español.

@@ -50,6 +50,8 @@ BEGIN
 
     Notas
       - Los minutos se calculan sobre horas truncadas al minuto, asi las partes suman exacto.
+      - Las columnas de texto de las tablas temporales usan COLLATE DATABASE_DEFAULT: sin eso toman la collation de
+        tempdb y chocan con la de la base (error 468 SQL_Latin1_General_CP1_CI_AS vs Modern_Spanish_CI_AS).
       - FechaNodisponible y FechaRegistroPeriodo son DATE en Z_Periodos: hoy solo traen la fecha, asi que los tramos
         empiezan y terminan a las 00:00 y los minutos salen en multiplos de 1440; un cambio y retorno el mismo dia
         da 0 minutos. Si esas dos columnas pasan a DATETIME, este SP calcula con la hora sin cambios.
@@ -75,8 +77,8 @@ BEGIN
         --------------------------------------------------------------------------------------------*/
         CREATE TABLE #Raices (
             IdPeriodoRaiz INT NOT NULL PRIMARY KEY,
-            Agrupador     VARCHAR(50) NULL,
-            Dominio       VARCHAR(50) NOT NULL,
+            Agrupador     VARCHAR(50) COLLATE DATABASE_DEFAULT NULL,
+            Dominio       VARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
             InicioPeriodo DATE NOT NULL,
             FinPeriodo    DATE NOT NULL,
             Ini           DATETIME NOT NULL,   -- inicio del periodo (00:00 de InicioPeriodo)
@@ -99,7 +101,7 @@ BEGIN
           2) Periodos PROPIOS de cada dominio (filas originales), uniendo los que se tocan o superponen
              (islas): sirve para saber si un sustituto estuvo dentro o fuera de sus periodos
         --------------------------------------------------------------------------------------------*/
-        CREATE TABLE #PerPropios (Dominio VARCHAR(50) NOT NULL, S DATETIME NOT NULL, E DATETIME NOT NULL);
+        CREATE TABLE #PerPropios (Dominio VARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL, S DATETIME NOT NULL, E DATETIME NOT NULL);
 
         ;WITH P AS (
             SELECT RTRIM(Dominio) AS Dominio,
@@ -129,10 +131,10 @@ BEGIN
         CREATE TABLE #Tramos (
             IdTramo              INT NOT NULL PRIMARY KEY,
             IdPeriodoRaiz        INT NOT NULL,
-            Agrupador            VARCHAR(50) NULL,
-            Dominio              VARCHAR(50) NOT NULL,
-            DominioSustituye     VARCHAR(50) NULL,
-            TipoTramo            VARCHAR(10) NOT NULL,
+            Agrupador            VARCHAR(50) COLLATE DATABASE_DEFAULT NULL,
+            Dominio              VARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
+            DominioSustituye     VARCHAR(50) COLLATE DATABASE_DEFAULT NULL,
+            TipoTramo            VARCHAR(10) COLLATE DATABASE_DEFAULT NOT NULL,
             Desde                DATETIME NOT NULL,
             Hasta                DATETIME NULL,
             Ini                  DATETIME NOT NULL,
@@ -146,7 +148,7 @@ BEGIN
             FueraPerTitularDesde DATETIME NULL,
             MinFueraPerPropio    INT NULL,
             FueraPerPropioDesde  DATETIME NULL,
-            EstadoPerPropio      VARCHAR(12) NULL
+            EstadoPerPropio      VARCHAR(12) COLLATE DATABASE_DEFAULT NULL
         );
 
         INSERT #Tramos (IdTramo, IdPeriodoRaiz, Agrupador, Dominio, DominioSustituye, TipoTramo, Desde, Hasta, Ini, Fin, FinEfec)
