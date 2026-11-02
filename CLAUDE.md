@@ -26,6 +26,20 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   `IdTipoVehiculo` e `Int1` (canal 1→207, 2→208, 3→209) sin escribir en `Log`.
   `SP/Z_SP_YPF_Set_DatosRutaVC_Fijo.sql` (nuevo, recibe `@IdRuta`): igual que `Z_SP_YPF_Set_DatosRutaVC` pero con
   valores fijos, `Ruta.IdVehiculo = 7` y `Ruta.IdConductor = 1`; registra OK/Error en `Log`.
+  **Rama `tarifas`** (sale de `LP-Solidas`; el trabajo de tarifas va aparte de la regla de la 141):
+  `SP/Z_SP_YPF_SustituyeDominioPeriodo.sql` (nuevo, recibe `@IdRecurso`; el placeholder de la plataforma está por
+  confirmar): lleva en `Z_Periodos` la traza de sustitución de vehículos según el último `RecursoTraceEstado` del
+  recurso. Cada fila de `Z_Periodos` es un **tramo**; la fila abierta (`FechaNodisponible IS NULL`) es quien cubre el
+  periodo hoy. **Baja** (`IdEstadoRecursoDestino = 3`): el dominio sustituto es el texto de
+  `RecursoTraceEstado.Observaciones` (la columna real es `Observaciones`, tipo `text`); cierra el tramo vigente del
+  vehículo (`FechaNodisponible` = hora Argentina) e inserta el tramo del sustituto copiando
+  `IdPeriodo`/`Agrupador`/`InicioPeriodo`/`FinPeriodo`, con `DominioSustituye` = el vehículo que se fue.
+  **Retorno** (3 → 2): cierra el tramo del sustituto directo e inserta un tramo nuevo del titular con
+  `DominioSustituye` = ese sustituto. Idempotente, en transacción, registra en `Log` (`SustituyeDominio`). Límite
+  conocido: no sigue cadenas (si el sustituto también se va antes de que vuelva el titular, deja un Aviso).
+  Se probó en SQL Server 2022 (Docker) con las tablas armadas con los tipos de `SPPabel.csv`. Pendiente de probar
+  en la base. Ojo: `FechaNodisponible` y `FechaRegistroPeriodo` son `date` (sin hora) y `IdPeriodo` se copia, así
+  que no puede ser PK/IDENTITY.
 - `Scripts/` — scripts de mantenimiento que no son SP. `Eliminar_Operacion_141.sql` borra jornadas, viajes,
   paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
   FK). **No borra el registro de la operación**; las jornadas se pueden conservar con `@BorrarJornadas = 0`.
