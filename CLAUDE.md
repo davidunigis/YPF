@@ -46,6 +46,18 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   (`SustituyeDominio`). Se probó en SQL Server 2022 (Docker) con las tablas armadas con los tipos de `SPPabel.csv`
   e `IdPeriodo` IDENTITY + PK. Pendiente de probar en la base. Ojo: `FechaNodisponible` y `FechaRegistroPeriodo` son
   `date` (sin hora); si pasan a `DATETIME` el SP guarda la hora sin cambios.
+  `SP/Z_SP_YPF_CalculaDisponibilidadPeriodos.sql` (nuevo, **sin parámetros**; se agenda por CRON a las 23:59 hora
+  Argentina = 02:59 UTC): analiza todos los periodos de `Z_Periodos` y deja, recalculado completo en cada corrida, la
+  trazabilidad de disponibilidad en dos tablas nuevas. Orden de ejecución en la base:
+  `Scripts/Z_Periodos_Agregar_IdPeriodoOrigen.sql` → `Scripts/Z_PeriodosDisponibilidad_Crear_Tablas.sql` → el SP.
+  `Z_PeriodosDisponibilidad` (una fila por periodo del titular): minutos disponible / no disponible / sustituido / sin
+  cobertura y quién lo sustituyó. `Z_PeriodosTramos` (una fila por tramo): en los sustitutos, a quién reemplazaron,
+  cuánto y si estuvieron dentro o fuera de periodo, respecto del periodo del titular (`MinFueraPerTitular`) y de sus
+  periodos propios (`EstadoPerPropio`, `MinFueraPerPropio`, `FueraPerPropioDesde`). Tiempos en minutos; si corre a las
+  23:59 el día se da por cerrado. Probado en SQL Server 2022 (Docker) con hora fija y con el reloj real, con columnas
+  `date` y `datetime`, y de punta a punta con `Z_SP_YPF_SustituyeDominioPeriodo`. Pendiente de probar en la base.
+  Ojo: con `FechaNodisponible`/`FechaRegistroPeriodo` en `date` los tramos empiezan y terminan a las 00:00 y un cambio
+  con retorno el mismo día da 0 minutos; conviene pasarlas a `DATETIME`.
 - `Scripts/` — scripts de mantenimiento que no son SP. `Eliminar_Operacion_141.sql` borra jornadas, viajes,
   paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
   FK). **No borra el registro de la operación**; las jornadas se pueden conservar con `@BorrarJornadas = 0`.
