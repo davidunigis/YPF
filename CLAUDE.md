@@ -33,13 +33,19 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   periodo hoy. **Baja** (`IdEstadoRecursoDestino = 3`): el dominio sustituto es el texto de
   `RecursoTraceEstado.Observaciones` (la columna real es `Observaciones`, tipo `text`); cierra el tramo vigente del
   vehículo (`FechaNodisponible` = hora Argentina) e inserta el tramo del sustituto copiando
-  `IdPeriodo`/`Agrupador`/`InicioPeriodo`/`FinPeriodo`, con `DominioSustituye` = el vehículo que se fue.
-  **Retorno** (3 → 2): cierra el tramo del sustituto directo e inserta un tramo nuevo del titular con
-  `DominioSustituye` = ese sustituto. Idempotente, en transacción, registra en `Log` (`SustituyeDominio`). Límite
-  conocido: no sigue cadenas (si el sustituto también se va antes de que vuelva el titular, deja un Aviso).
-  Se probó en SQL Server 2022 (Docker) con las tablas armadas con los tipos de `SPPabel.csv`. Pendiente de probar
-  en la base. Ojo: `FechaNodisponible` y `FechaRegistroPeriodo` son `date` (sin hora) y `IdPeriodo` se copia, así
-  que no puede ser PK/IDENTITY.
+  `Agrupador`/`InicioPeriodo`/`FinPeriodo`, con `DominioSustituye` = el vehículo que se fue.
+  **`Z_Periodos.IdPeriodo` es IDENTITY**: no se puede copiar (error "Cannot insert explicit value for identity
+  column", visto en la base). Los tramos nuevos reciben su propio `IdPeriodo` y guardan en la columna nueva
+  `IdPeriodoOrigen` el `IdPeriodo` de la fila original; todos los tramos de un periodo comparten
+  `COALESCE(IdPeriodoOrigen, IdPeriodo)`. **Antes de crear el SP hay que ejecutar**
+  `Scripts/Z_Periodos_Agregar_IdPeriodoOrigen.sql` (columna NULL, no toca filas existentes).
+  **Retorno** (3 → 2): cierra el tramo abierto del periodo e inserta un tramo nuevo del vehículo que vuelve con
+  `DominioSustituye` = quien cubría. El **titular** (fila original) recupera el lugar siempre, aunque haya habido
+  una cadena de sustitutos; un sustituto solo lo recupera si quien cubre es su sustituto directo (así no desplaza
+  al titular que ya volvió; en ese caso deja un Aviso). Idempotente, en transacción, registra en `Log`
+  (`SustituyeDominio`). Se probó en SQL Server 2022 (Docker) con las tablas armadas con los tipos de `SPPabel.csv`
+  e `IdPeriodo` IDENTITY + PK. Pendiente de probar en la base. Ojo: `FechaNodisponible` y `FechaRegistroPeriodo` son
+  `date` (sin hora); si pasan a `DATETIME` el SP guarda la hora sin cambios.
 - `Scripts/` — scripts de mantenimiento que no son SP. `Eliminar_Operacion_141.sql` borra jornadas, viajes,
   paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
   FK). **No borra el registro de la operación**; las jornadas se pueden conservar con `@BorrarJornadas = 0`.

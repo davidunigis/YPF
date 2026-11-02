@@ -1,6 +1,7 @@
 USE [UNIGIS_DataRepository_YPF]
 GO
 /****** Objeto: StoredProcedure [dbo].[Z_SP_YPF_SustituyeDominioPeriodo] Fecha de script: 02/11/2026 ******/
+-- REQUISITO: ejecutar antes Scripts/Z_Periodos_Agregar_IdPeriodoOrigen.sql (agrega Z_Periodos.IdPeriodoOrigen).
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -12,6 +13,10 @@ AS
 BEGIN
     /*
     Creado: 02/11/2026
+    Modificado: 02/11/2026 - Z_Periodos.IdPeriodo es IDENTITY y no se puede copiar (error "Cannot insert explicit
+              value for identity column"). Los tramos nuevos reciben su propio IdPeriodo y la columna nueva
+              IdPeriodoOrigen guarda el IdPeriodo de la fila original del periodo. Con ese dato el retorno
+              tambien resuelve cadenas de sustitutos.
     Objetivo: llevar en Z_Periodos la traza de cuando un vehiculo deja de estar disponible, quien lo sustituye
               y cuando vuelve. Se ejecuta cuando el Recurso del vehiculo recibe un cambio de estado.
 
@@ -26,27 +31,30 @@ BEGIN
       - FechaNodisponible = momento (hora Argentina) en que ese dominio dejo de cubrir el periodo.
       - DominioSustituye = a quien reemplaza esa fila (NULL en las filas originales).
       - FechaRegistroPeriodo = momento (hora Argentina) desde el que rige el tramo, en las filas que crea este SP.
-      - Los tramos de un mismo periodo se reconocen por IdPeriodo + Agrupador + InicioPeriodo + FinPeriodo (iguales).
+      - Todos los tramos de un mismo periodo comparten la "raiz" COALESCE(IdPeriodoOrigen, IdPeriodo): el IdPeriodo
+        de la fila original, que es la del TITULAR del periodo. Las filas originales tienen IdPeriodoOrigen NULL.
       - Solo se consideran periodos VIGENTES: InicioPeriodo <= hoy (Argentina) <= FinPeriodo.
 
     1) BAJA - el recurso pasa a IdEstadoRecursoDestino = 3 (cualquiera sea el origen):
          El dominio sustituto es el texto de RecursoTraceEstado.Observaciones (se limpia de espacios y saltos de linea).
          a) Al dominio del vehiculo (A), en cada tramo ABIERTO vigente de Z_Periodos, se le pone
             FechaNodisponible = ahora (hora Argentina).
-         b) Por cada tramo cerrado se inserta una fila nueva para el sustituto (B): IdPeriodo, Agrupador,
-            InicioPeriodo y FinPeriodo copiados, Dominio = B, DominioSustituye = A, FechaRegistroPeriodo = ahora.
+         b) Por cada tramo cerrado se inserta una fila nueva para el sustituto (B): Agrupador, InicioPeriodo y
+            FinPeriodo copiados, IdPeriodoOrigen = la raiz del periodo, Dominio = B, DominioSustituye = A,
+            FechaRegistroPeriodo = ahora. (IdPeriodo lo asigna la tabla.)
          Si A no tiene tramo abierto vigente, o Observaciones viene vacia / no es un dominio (mas de 50 caracteres)
          / es el mismo dominio, no se cambia nada y queda un Aviso en Log.
 
     2) RETORNO - transicion IdEstadoRecursoOrigen = 3 -> IdEstadoRecursoDestino = 2:
-         a) Se busca, en los periodos donde A dejo un tramo cerrado y no tiene tramo abierto, el tramo ABIERTO
-            de quien lo sustituyo (DominioSustituye = A) y se le pone FechaNodisponible = ahora.
-         b) Se inserta una fila nueva para A (copiando IdPeriodo, Agrupador, InicioPeriodo, FinPeriodo) con
-            DominioSustituye = el dominio sustituto y FechaRegistroPeriodo = ahora: A vuelve a reemplazar a quien
-            lo habia reemplazado.
-         Limite: solo encuentra al sustituto DIRECTO. Si el sustituto tambien dejo de estar disponible y lo
-         reemplazo otro dominio antes de que A vuelva, no hay tramo abierto con DominioSustituye = A: no se
-         cambia nada y queda un Aviso en Log.
+         a) En los periodos donde A dejo un tramo cerrado y no tiene tramo abierto, se cierra el tramo ABIERTO
+            (FechaNodisponible = ahora), siempre que se cumpla una de estas dos:
+              - A es el TITULAR del periodo (su fila es la original): recupera el lugar sin importar quien lo cubra
+                (aunque haya habido una cadena de sustitutos).
+              - quien cubre es el sustituto DIRECTO de A (DominioSustituye = A).
+            Un sustituto que vuelve cuando el titular ya recupero el lugar no desplaza a nadie: queda un Aviso.
+         b) Se inserta una fila nueva para A (Agrupador, InicioPeriodo, FinPeriodo copiados, IdPeriodoOrigen = la
+            raiz) con DominioSustituye = el dominio que cubria y FechaRegistroPeriodo = ahora: A vuelve a reemplazar
+            a quien lo habia reemplazado.
 
     Ejemplo (A deja de estar disponible, lo reemplaza B, y despues A vuelve):
          A  Inicio..Fin  FechaNodisponible = t1                                  <- A se fue
@@ -77,11 +85,11 @@ BEGIN
     DECLARE @Detalle   VARCHAR(300);
 
     DECLARE @Tramos TABLE (
-        IdPeriodo     INT,
+        IdPeriodoRaiz INT,               -- IdPeriodo de la fila original del periodo
         Agrupador     VARCHAR(50),
         InicioPeriodo DATE,
         FinPeriodo    DATE,
-        Dominio       VARCHAR(50)
+        Dominio       VARCHAR(50)        -- dominio del tramo que se cerro
     );
 
     -- Ultimo cambio de estado del recurso
@@ -130,15 +138,16 @@ BEGIN
                 -- a) cerrar el tramo abierto vigente del vehiculo que se va
                 UPDATE Z_Periodos
                 SET FechaNodisponible = @Ahora
-                OUTPUT inserted.IdPeriodo, inserted.Agrupador, inserted.InicioPeriodo, inserted.FinPeriodo
-                INTO @Tramos (IdPeriodo, Agrupador, InicioPeriodo, FinPeriodo)
+                OUTPUT COALESCE(inserted.IdPeriodoOrigen, inserted.IdPeriodo), inserted.Agrupador,
+                       inserted.InicioPeriodo, inserted.FinPeriodo
+                INTO @Tramos (IdPeriodoRaiz, Agrupador, InicioPeriodo, FinPeriodo)
                 WHERE Dominio = @DomActual
                   AND FechaNodisponible IS NULL
                   AND @Hoy BETWEEN InicioPeriodo AND FinPeriodo;
 
-                -- b) tramo nuevo del sustituto, copiado del que se cerro
-                INSERT Z_Periodos (IdPeriodo, Agrupador, Dominio, InicioPeriodo, FinPeriodo, FechaRegistroPeriodo, DominioSustituye)
-                SELECT IdPeriodo, Agrupador, @DomNuevo, InicioPeriodo, FinPeriodo, @Ahora, @DomActual
+                -- b) tramo nuevo del sustituto, copiado del que se cerro (IdPeriodo lo asigna la tabla)
+                INSERT Z_Periodos (IdPeriodoOrigen, Agrupador, Dominio, InicioPeriodo, FinPeriodo, FechaRegistroPeriodo, DominioSustituye)
+                SELECT IdPeriodoRaiz, Agrupador, @DomNuevo, InicioPeriodo, FinPeriodo, @Ahora, @DomActual
                 FROM @Tramos;
 
                 SELECT @Filas = COUNT(*) FROM @Tramos;
@@ -159,33 +168,34 @@ BEGIN
             ------------------------------------------------------------------
             BEGIN TRAN;
 
-            -- a) cerrar el tramo abierto de quien lo sustituyo (solo en periodos donde el titular dejo un tramo cerrado)
+            -- a) cerrar el tramo abierto del periodo donde el vehiculo dejo un tramo cerrado y no tiene tramo abierto
             UPDATE s
             SET FechaNodisponible = @Ahora
-            OUTPUT inserted.IdPeriodo, inserted.Agrupador, inserted.InicioPeriodo, inserted.FinPeriodo, inserted.Dominio
-            INTO @Tramos (IdPeriodo, Agrupador, InicioPeriodo, FinPeriodo, Dominio)
+            OUTPUT COALESCE(inserted.IdPeriodoOrigen, inserted.IdPeriodo), inserted.Agrupador,
+                   inserted.InicioPeriodo, inserted.FinPeriodo, inserted.Dominio
+            INTO @Tramos (IdPeriodoRaiz, Agrupador, InicioPeriodo, FinPeriodo, Dominio)
             FROM Z_Periodos s
-            WHERE s.DominioSustituye = @DomActual
-              AND s.FechaNodisponible IS NULL
+            WHERE s.FechaNodisponible IS NULL
               AND @Hoy BETWEEN s.InicioPeriodo AND s.FinPeriodo
+              -- el vehiculo tuvo un tramo en este periodo y lo cerro (dejo de estar disponible)
               AND EXISTS (SELECT 1 FROM Z_Periodos a
                           WHERE a.Dominio = @DomActual
                             AND a.FechaNodisponible IS NOT NULL
-                            AND a.IdPeriodo = s.IdPeriodo
-                            AND ISNULL(a.Agrupador, '') = ISNULL(s.Agrupador, '')
-                            AND a.InicioPeriodo = s.InicioPeriodo
-                            AND a.FinPeriodo = s.FinPeriodo)
+                            AND COALESCE(a.IdPeriodoOrigen, a.IdPeriodo) = COALESCE(s.IdPeriodoOrigen, s.IdPeriodo))
+              -- y hoy no tiene tramo abierto en este periodo
               AND NOT EXISTS (SELECT 1 FROM Z_Periodos a
                               WHERE a.Dominio = @DomActual
                                 AND a.FechaNodisponible IS NULL
-                                AND a.IdPeriodo = s.IdPeriodo
-                                AND ISNULL(a.Agrupador, '') = ISNULL(s.Agrupador, '')
-                                AND a.InicioPeriodo = s.InicioPeriodo
-                                AND a.FinPeriodo = s.FinPeriodo);
+                                AND COALESCE(a.IdPeriodoOrigen, a.IdPeriodo) = COALESCE(s.IdPeriodoOrigen, s.IdPeriodo))
+              -- recupera el lugar si es el sustituto directo suyo, o si el vehiculo es el TITULAR del periodo
+              AND (s.DominioSustituye = @DomActual
+                   OR EXISTS (SELECT 1 FROM Z_Periodos t
+                              WHERE t.IdPeriodo = COALESCE(s.IdPeriodoOrigen, s.IdPeriodo)
+                                AND t.Dominio = @DomActual));
 
-            -- b) tramo nuevo del titular, que vuelve a reemplazar al sustituto
-            INSERT Z_Periodos (IdPeriodo, Agrupador, Dominio, InicioPeriodo, FinPeriodo, FechaRegistroPeriodo, DominioSustituye)
-            SELECT IdPeriodo, Agrupador, @DomActual, InicioPeriodo, FinPeriodo, @Ahora, RTRIM(Dominio)
+            -- b) tramo nuevo del vehiculo que vuelve, que reemplaza a quien cubria (IdPeriodo lo asigna la tabla)
+            INSERT Z_Periodos (IdPeriodoOrigen, Agrupador, Dominio, InicioPeriodo, FinPeriodo, FechaRegistroPeriodo, DominioSustituye)
+            SELECT IdPeriodoRaiz, Agrupador, @DomActual, InicioPeriodo, FinPeriodo, @Ahora, RTRIM(Dominio)
             FROM @Tramos;
 
             SELECT @Filas = COUNT(*) FROM @Tramos;
@@ -193,9 +203,9 @@ BEGIN
             COMMIT TRAN;
 
             IF @Filas = 0
-                SELECT @Resultado = 'Aviso', @Detalle = 'Retorno: no hay tramo abierto de un sustituto directo (ya retomado, o el sustituto tambien se fue)';
+                SELECT @Resultado = 'Aviso', @Detalle = 'Retorno: no hay tramo que retomar (ya retomado, o no es el titular ni el sustituto directo de quien cubre)';
             ELSE
-                SELECT @Resultado = 'OK', @Detalle = 'Retorno: vuelve a reemplazar al sustituto, tramos=' + CONVERT(VARCHAR(10), @Filas);
+                SELECT @Resultado = 'OK', @Detalle = 'Retorno: vuelve a reemplazar a quien cubria, tramos=' + CONVERT(VARCHAR(10), @Filas);
         END
     END TRY
 
