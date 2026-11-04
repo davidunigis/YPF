@@ -47,17 +47,26 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   e `IdPeriodo` IDENTITY + PK. Pendiente de probar en la base. Ojo: `FechaNodisponible` y `FechaRegistroPeriodo` son
   `date` (sin hora); si pasan a `DATETIME` el SP guarda la hora sin cambios.
   `SP/Z_SP_YPF_CalculaDisponibilidadPeriodos.sql` (nuevo, **sin parámetros**; se agenda por CRON a las 23:59 hora
-  Argentina = 02:59 UTC): analiza todos los periodos de `Z_Periodos` y deja, recalculado completo en cada corrida, la
-  trazabilidad de disponibilidad en dos tablas nuevas. Orden de ejecución en la base:
-  `Scripts/Z_Periodos_Agregar_IdPeriodoOrigen.sql` → `Scripts/Z_PeriodosDisponibilidad_Crear_Tablas.sql` → el SP.
-  `Z_PeriodosDisponibilidad` (una fila por periodo del titular): minutos disponible / no disponible / sustituido / sin
-  cobertura y quién lo sustituyó. `Z_PeriodosTramos` (una fila por tramo): en los sustitutos, a quién reemplazaron,
-  cuánto y si estuvieron dentro o fuera de periodo, respecto del periodo del titular (`MinFueraPerTitular`) y de sus
-  periodos propios (`EstadoPerPropio`, `MinFueraPerPropio`, `FueraPerPropioDesde`). Tiempos en minutos; si corre a las
-  23:59 el día se da por cerrado. Probado en SQL Server 2022 (Docker) con hora fija y con el reloj real, con columnas
-  `date` y `datetime`, y de punta a punta con `Z_SP_YPF_SustituyeDominioPeriodo`. Pendiente de probar en la base.
-  Ojo: con `FechaNodisponible`/`FechaRegistroPeriodo` en `date` los tramos empiezan y terminan a las 00:00 y un cambio
-  con retorno el mismo día da 0 minutos; conviene pasarlas a `DATETIME`.
+  Argentina = 02:59 UTC). Orden de ejecución en la base: `Scripts/Z_Periodos_Agregar_IdPeriodoOrigen.sql` →
+  `Scripts/Z_PeriodosDisponibilidad_Crear_Tablas.sql` → el SP. **Antes de usarlo completar en el SP
+  `@IdTipoIncidencia` y `@LoginIncidencia`** (quedan NULL: sin ellos no genera incidencias y deja un Aviso en `Log`).
+  **Paso 1** (disponibilidad): la indisponibilidad se calcula **por Agrupador + periodo** (no por dominio) y en **días**
+  (`DECIMAL(12,4)`), sumando todas las líneas del agrupador. `Z_PeriodosDisponibilidad` = una fila por agrupador+periodo
+  (Agrupador NULL = `''`); `Z_PeriodosTramos` = detalle por dominio (titular/sustituto, a quién reemplazó, dentro o fuera
+  de periodo respecto del titular y de sus periodos propios). **Columna `Procesado` (BIT)**: un periodo con `Procesado = 1`
+  no se recalcula ni se borra; para reprocesarlo `UPDATE ... SET Procesado = 0`. Los periodos en curso se recalculan cada
+  noche (los días acumulan); uno terminado se calcula y queda procesado al resolverse el paso 2.
+  **Paso 2** (incidencia, solo periodos terminados): si `DiasNoDisponible` del agrupador es **>= 4** (`@DiasMinIncidencia`)
+  busca en `Guia` la fila con `Varchar1 = Agrupador` y `Fecha` dentro del periodo (si hay varias usa la más reciente) e
+  inserta en `Incidencia`: `IdGuia = Guia.IdGuia`, `Valor` = días, `IdTipoIncidencia`/`Login` configurados,
+  `FechaCreacion = GETUTCDATE()`, `Observaciones` descriptiva (el resto por DEFAULT/NULL). No duplica si ya hay una
+  incidencia no eliminada de ese tipo para esa guía. Si falta la guía o la configuración el periodo **queda pendiente y se
+  reintenta** cada noche. El paso 2 va en su propia transacción: si falla, el paso 1 se conserva.
+  El script de tablas **recrea** las tablas de la versión anterior (por dominio, en minutos) porque cambió la granularidad;
+  son derivadas y se recalculan. Probado en SQL Server 2022 (Docker, base `Modern_Spanish_CI_AS`) con hora fija y reloj
+  real, columnas `date` y `datetime`, errores con rollback y de punta a punta con `Z_SP_YPF_SustituyeDominioPeriodo`.
+  Pendiente de probar en la base. Ojo: con `FechaNodisponible`/`FechaRegistroPeriodo` en `date` los tramos empiezan y
+  terminan a las 00:00 y un cambio con retorno el mismo día da 0 días; conviene pasarlas a `DATETIME`.
 - `Scripts/` — scripts de mantenimiento que no son SP. `Eliminar_Operacion_141.sql` borra jornadas, viajes,
   paradas, órdenes y pedidos de la operación 141 junto con todas sus filas dependientes (las descubre por las
   FK). **No borra el registro de la operación**; las jornadas se pueden conservar con `@BorrarJornadas = 0`.
