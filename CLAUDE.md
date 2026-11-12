@@ -49,6 +49,12 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   geocercas, eventos, tarifa, costo ni KM liquidados: quedan "por confirmar" hasta correr
   `Descubrir_Esquema_Reportes.sql` (solo lectura, 3 resultados con tablas y columnas candidatas) en la base real.
   Mientras no se confirmen, **no inventar nombres de tablas/columnas** para la versión con datos reales.
+  Además hay **una consulta por reporte**, cada una autocontenida: `Reporte_1_Pedidos.sql`, `Reporte_2_Viajes.sql`,
+  `Reporte_3_Geocercas.sql`, `Reporte_3_1_Eventos_Geocerca.sql` y `Reporte_4_Gestion_Vehiculos.sql`. Son una sola
+  sentencia `WITH ... SELECT` con los datos ficticios en `VALUES` dentro de CTE `Sim...` (no leen tablas reales ni usan
+  tablas temporales). Para pasar a datos reales se reemplazan los CTE `Sim...` por las tablas reales con las mismas
+  columnas y el `SELECT` final no cambia. Salen del mismo modelo de datos que el script combinado, así que devuelven
+  las mismas filas; si se cambia un dato hay que cambiarlo en los dos lados. Solo el reporte 2 requiere SQL Server 2017+.
 
 ## Regla en curso: excluir la operación 141
 
