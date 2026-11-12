@@ -38,6 +38,17 @@ En esta rama se agrupan los SP que se van a modificar para el frente **LP Solida
   las de la lista que no figuran en ella y tienen filas que bloquearían el borrado; (B) revisa las FK entre las
   tablas de la lista: hijas que se borran después que su padre (ORDEN) y filas de la hija que ningún `DELETE`
   alcanza (COBERTURA).
+- `Reportes/` — reportes y consultas que no son SP. Los archivos van en UTF-8 con BOM cuando llevan tildes o `°` en
+  los alias de columna (para que SSMS no los desarme).
+  `Reportes_LP_Solidas_Simulado.sql` es autocontenido: crea tablas temporales `#...` con **datos ficticios** y devuelve
+  5 resultados con las columnas pedidas para la presentación (1 Pedidos, 2 Viajes, 3 Geocercas, 3.1 Eventos de
+  geocerca, 4 Gestión de vehículos). No toca tablas reales; requiere SQL Server 2017+ (`STRING_AGG`). Los datos son
+  coherentes entre reportes (el despacho/entrega de cada PAS y los tiempos de gestión salen de los eventos de geocerca
+  del viaje). Las definiciones usadas (despacho, entrega, carga, descarga, carreteando, detenido) están en su
+  encabezado, y al final trae la equivalencia con las tablas reales. En el repo **no aparecen** las tablas de
+  geocercas, eventos, tarifa, costo ni KM liquidados: quedan "por confirmar" hasta correr
+  `Descubrir_Esquema_Reportes.sql` (solo lectura, 3 resultados con tablas y columnas candidatas) en la base real.
+  Mientras no se confirmen, **no inventar nombres de tablas/columnas** para la versión con datos reales.
 
 ## Regla en curso: excluir la operación 141
 
